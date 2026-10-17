@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#171b58">
+  <title>Vistr</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+</head>
+<body>
+  <!-- One top bar for every screen: stays in place while the page scrolls -->
+  <header class="appbar" id="appbar">
+    <div class="appbar-in">
+      <button type="button" class="brand" data-bar="home" aria-label="Vistr home"><span class="wordmark small"><span>V</span><span>i</span><span>s</span><span>t</span><span>r</span></span></button>
+      <button type="button" class="net-pill" data-net="offline" data-bar="toggle-net" title="Tap to go online or offline"><i></i><span data-net-text>Offline</span><span class="swap" aria-hidden="true">⇄</span></button>
+      <span class="grow"></span>
+      <span class="you" data-live-only hidden>ID <strong data-code></strong></span>
+      <button type="button" class="menu-btn" data-bar="menu" aria-label="Menu" aria-haspopup="dialog"><i></i><i></i><i></i></button>
+    </div>
+  </header>
+  <main id="app" aria-live="polite"></main>
+
+  <template id="t-server">
+    <section class="screen narrow">
+      <h1 class="wordmark" aria-label="Vistr"><span>V</span><span>i</span><span>s</span><span>t</span><span>r</span></h1>
+      <p class="lead" data-message>Can't reach the game server.</p>
+      <button class="btn primary" type="button" data-action="retry">Try again</button>
+      <button class="btn" type="button" data-action="standalone">Play offline instead</button>
+      <details class="advanced">
+        <summary>Change server address</summary>
+        <form class="stack" data-form="server">
+          <label>Server address
+            <input name="url" type="url" required placeholder="http://192.168.1.20:3000" autocomplete="url">
+          </label>
+          <button class="btn" type="submit">Connect</button>
+        </form>
+      </details>
+      <p class="error" data-error></p>
+    </section>
+  </template>
+
+  <template id="t-signin">
+    <section class="screen narrow">
+      <h1 class="wordmark" aria-label="Vistr"><span>V</span><span>i</span><span>s</span><span>t</span><span>r</span></h1>
+      <h2 class="signin-title">Get your Player ID</h2>
+      <p class="lead">To play with others, enter your email once. New here? You'll get a Player ID. Played before? We'll find yours.</p>
+      <form class="stack" data-form="email">
+        <label>Email
+          <input name="email" type="email" required autocomplete="email" placeholder="you@example.com">
+        </label>
+        <button class="btn primary" type="submit">Get my Player ID</button>
+      </form>
+      <details class="advanced" data-has-id>
+        <summary>I have a Player ID</summary>
+        <form class="stack" data-form="id">
+          <label>Your Player ID
+            <input name="code" inputmode="numeric" pattern="\d{2,4}" maxlength="4" required autocomplete="username" placeholder="e.g. 27" class="id-input">
+          </label>
+          <button class="btn" type="submit">Go online with my ID</button>
+        </form>
+      </details>
+      <p class="error" data-error></p>
+      <button class="link center" type="button" data-action="standalone">Not now, stay offline</button>
+    </section>
+  </template>
+
+  <template id="t-welcome">
+    <section class="screen narrow">
+      <p class="lead" data-welcome>Your Player ID is</p>
+      <p class="big-id" data-code></p>
+      <p class="hint">Use this number to sign in next time and to invite friends. Write it down.</p>
+      <button class="btn primary big" type="button" data-action="continue">Start playing</button>
+    </section>
+  </template>
+
+  <template id="t-home">
+    <section class="screen">
+      <h2>Word length</h2>
+      <div class="levels" role="radiogroup" aria-label="Word length">
+        <button class="level" role="radio" data-level="4"><b>4</b><span>letters</span></button>
+        <button class="level" role="radio" data-level="5"><b>5</b><span>letters</span></button>
+        <button class="level" role="radio" data-level="6"><b>6</b><span>letters</span></button>
+        <button class="level" role="radio" data-level="7"><b>7</b><span>letters</span></button>
+      </div>
+
+      <h2>Intensity</h2>
+      <div class="intensity" role="radiogroup" aria-label="Intensity">
+        <button type="button" role="radio" data-intensity="learner"><span class="stars" aria-hidden="true">★</span><b>Learner</b></button>
+        <button type="button" role="radio" data-intensity="intermediate"><span class="stars" aria-hidden="true">★★</span><b>Intermediate</b></button>
+        <button type="button" role="radio" data-intensity="advanced"><span class="stars" aria-hidden="true">★★★</span><b>Advanced</b></button>
+      </div>
+      <p class="hint intensity-about" data-intensity-about></p>
+
+      <button class="btn primary big" type="button" data-action="solo">Play solo</button>
+
+      <section class="together" aria-labelledby="together-title">
+        <!-- Offline: what the game is, and the way to go online -->
+        <div class="about" data-standalone-only>
+          <h2>How to play</h2>
+          <ol class="how">
+            <li><span><b>Change one letter</b> to make a new real word. Roll a drum up or down, then tap Process.</span></li>
+            <li><span><b>Every real word scores.</b> Rolling in J, Q, X or Z earns extra, and so do streaks.</span></li>
+            <li><span><b>Hunt the 5 hidden jackpot words</b> for +10 each.</span></li>
+            <li><span><b>Stuck?</b> Hint shows which letter to roll. Next word deals a fresh one.</span></li>
+            <li><span><b>5 minutes a round.</b> Beat your own top 10.</span></li>
+          </ol>
+          <button class="btn go-online" type="button" data-action="go-online">
+            <span class="go-title" data-go-title>Go online</span>
+            <span class="go-sub">and play with others</span>
+          </button>
+        </div>
+
+        <!-- Online: who wants a play mate -->
+        <div class="live-area" data-live-only>
+          <h2 id="together-title">Play with someone</h2>
+          <p class="hint" data-avail-hint></p>
+          <div class="outgoing" data-outgoing hidden>
+            <span data-outgoing-text></span>
+            <button class="link" type="button" data-action="cancel-request">Cancel</button>
+          </div>
+          <ul class="players" data-players aria-live="polite"></ul>
+          <form class="inline" data-form="request">
+            <input name="code" placeholder="Player ID" inputmode="numeric" maxlength="4" required aria-label="Player ID">
+            <button class="btn" type="submit">Send request</button>
+          </form>
+          <button class="link center" type="button" data-action="signout">Sign out of this device</button>
+        </div>
+        <p class="error" data-error></p>
+      </section>
+
+      <div class="boards" data-boards></div>
+      <p class="legal-links"><button class="link" type="button" data-action="page" data-page="privacy">Privacy</button> · <button class="link" type="button" data-action="page" data-page="terms">Terms</button></p>
+    </section>
+  </template>
+
+
+  <template id="t-ready">
+    <section class="screen narrow">
+      <header class="bar">
+        <button class="link" type="button" data-action="leave-match">Cancel</button>
+        <span>Level <strong data-level></strong></span>
+        <span></span>
+      </header>
+      <h1 class="headline" data-title></h1>
+      <ul class="players" data-players></ul>
+      <button class="btn primary big" type="button" data-action="ready">Start</button>
+      <p class="hint" data-hint></p>
+      <ul class="rules" data-rules></ul>
+    </section>
+  </template>
+
+  <template id="t-game">
+    <section class="screen game">
+      <header class="scoreboard">
+        <div class="score me"><span>You</span><b data-myscore>0</b></div>
+        <div class="clock" data-clock>3:00</div>
+        <div class="score opp" data-opp hidden><span data-oppcode></span><b data-oppscore>0</b></div>
+      </header>
+      <div class="chips-row">
+        <p class="jackpots" data-jackpots></p>
+        <p class="streak" data-streak hidden></p>
+      </div>
+      <div class="turn" data-turn hidden role="status">
+        <span class="turn-who" data-turn-who></span><span class="turn-time" data-turn-time></span>
+        <i class="turn-bar" aria-hidden="true"><i data-turn-bar></i></i>
+      </div>
+      <div class="drums" data-drums role="group" aria-label="Letter rollers"></div>
+      <div class="actions">
+        <button class="btn quiet" type="button" data-action="reset">Undo</button>
+        <button class="btn primary big" type="button" data-action="process" disabled>Process</button>
+      </div>
+      <p class="verdict" data-verdict role="status"></p>
+      <ul class="parts" data-parts aria-label="Points for that word"></ul>
+      <div class="helpers">
+        <button class="btn hint-btn" type="button" data-action="hint">Hint <span class="hints-left" data-hints-left></span></button>
+        <button class="btn skip" type="button" data-action="skip">Next word <span class="skips-left" data-skips-left>4 free</span></button>
+      </div>
+      <p class="keys">On a keyboard, left and right pick a letter, up and down roll it, and Enter processes.</p>
+      <button class="link end" type="button" data-action="quit">End round</button>
+      <section class="words-played" aria-label="Words this round">
+        <h2>Words this round <span data-chain-count></span></h2>
+        <ol class="chain" data-chain></ol>
+      </section>
+    </section>
+  </template>
+
+  <template id="t-results">
+    <section class="screen">
+      <h1 class="headline" data-title></h1>
+      <div class="final" data-final></div>
+      <div class="boards" data-boards></div>
+      <div class="modes">
+        <button class="btn primary" type="button" data-action="again">Play again</button>
+        <button class="btn" type="button" data-action="home">Home</button>
+      </div>
+    </section>
+  </template>
+
+  <dialog id="request-dialog" aria-labelledby="request-title">
+    <form method="dialog" class="stack">
+      <p class="request-title" id="request-title"><strong data-from></strong> wants to play you at <strong data-level></strong> letters, <strong data-req-intensity></strong>.</p>
+      <p class="hint" data-solo-note hidden></p>
+      <p class="hint">This request closes in <span data-left>120</span> s.</p>
+      <div class="modes">
+        <button class="btn primary" value="accept">Play them</button>
+        <button class="btn" value="decline">Decline</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="menu" class="menu-sheet" aria-label="Menu">
+    <div class="menu-head">
+      <span class="wordmark small" aria-hidden="true"><span>V</span><span>i</span><span>s</span><span>t</span><span>r</span></span>
+      <button type="button" class="x" data-close aria-label="Close menu">×</button>
+    </div>
+    <nav class="menu-list">
+      <button type="button" data-page="about"><span class="ic" aria-hidden="true">★</span>About Vistr</button>
+      <button type="button" data-page="how-to"><span class="ic" aria-hidden="true">?</span>How to play</button>
+      <button type="button" data-page="reviews"><span class="ic" aria-hidden="true">✪</span>Reviews</button>
+      <button type="button" data-page="contact"><span class="ic" aria-hidden="true">✉</span>Contact us</button>
+      <button type="button" data-page="privacy"><span class="ic" aria-hidden="true">🛡</span>Privacy &amp; policies</button>
+      <button type="button" data-page="terms"><span class="ic" aria-hidden="true">§</span>Terms &amp; conditions</button>
+      <button type="button" data-ad-privacy hidden><span class="ic" aria-hidden="true">⚙</span>Ad privacy choices</button>
+    </nav>
+    <p class="menu-foot">Vistr by Mkarimu Media</p>
+  </dialog>
+
+  <dialog id="reader" class="reader" aria-labelledby="reader-title">
+    <header class="reader-head">
+      <button type="button" class="reader-back" data-back aria-label="Back to menu">‹</button>
+      <h2 id="reader-title" data-reader-title></h2>
+      <button type="button" class="x" data-close aria-label="Close">×</button>
+    </header>
+    <div class="reader-body" data-reader-body></div>
+  </dialog>
+
+  <div id="fx" aria-hidden="true"></div>
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <aside class="ad-banner" id="ad-banner" aria-label="Advertisement"></aside>
+
+  <dialog class="ad-interstitial" id="ad-interstitial" aria-label="Advertisement">
+    <div class="ad-card">
+      <div class="ad-head"><span class="ad-tag">Ad</span><span class="ad-close"><button class="ad-skip" type="button" data-skip>Close</button><button class="ad-x" type="button" data-x aria-label="Close this ad">×</button></span></div>
+      <img data-img alt="" hidden>
+      <h3 data-title></h3>
+      <p data-text></p>
+      <a class="btn primary" data-cta target="_blank" rel="noopener sponsored"></a>
+    </div>
+  </dialog>
+
+  <script src="engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

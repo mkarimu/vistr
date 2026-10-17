@@ -1,0 +1,19 @@
+# Render Blueprint: one free web service running the Vistr game server.
+# Render -> New -> Blueprint -> pick this GitHub repository -> Apply.
+services:
+  - type: web
+    name: vistr
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev   # nothing to install: the server has no dependencies
+    startCommand: node server/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Password for /admin.html (messages, reviews). Render makes one: see Environment.
+      - key: ADMIN_KEY
+        generateValue: true
+      # Optional, recommended: keep players and scores when the free server sleeps.
+      # Add UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN under Environment
+      # (free database at https://console.upstash.com).

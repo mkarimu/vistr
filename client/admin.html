@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Vistr admin</title>
+  <link rel="stylesheet" href="pages.css">
+  <style>
+    .card { padding: 12px 14px; margin: 10px 0; border-radius: 14px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.14); }
+    .card p { margin: 6px 0; white-space: pre-wrap; }
+    .card small { color: #c7b8ee; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    button, input { font: inherit; border-radius: 10px; padding: 8px 12px; }
+    button { border: none; font-weight: 700; cursor: pointer; background: #45c8f5; color: #2a1450; }
+    button.warn { background: #ff7a7a; } button.ok { background: #a8e44a; }
+    input { color: #fff7ec; background: rgba(0,0,0,0.25); border: 2px solid rgba(255,255,255,0.2); }
+    .tag { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; color: #2a1450; background: #ffd23f; }
+    .tag.hidden { background: #ff7a7a; } .tag.shown { background: #a8e44a; }
+  </style>
+</head>
+<body>
+<header class="page-bar"><a href="./" class="page-brand">Vistr</a><span>Admin</span></header>
+<main class="page">
+  <h1>Messages and reviews</h1>
+  <form id="login" class="row">
+    <input type="password" name="key" placeholder="Admin key (ADMIN_KEY)" required autocomplete="current-password">
+    <button>Open</button>
+  </form>
+  <p class="meta" id="note">Only someone with your server's ADMIN_KEY can see this.</p>
+  <section id="out"></section>
+</main>
+<script>
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const when = t => new Date(t).toLocaleString();
+  let key = sessionStorage.getItem('vistr-admin') || '';
+  const get = p => fetch(p + (p.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(key)).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error); return d; }));
+  async function load() {
+    const out = document.getElementById('out');
+    try {
+      const [{ messages }, { reviews }] = await Promise.all([get('/api/contact/messages'), get('/api/reviews/all')]);
+      sessionStorage.setItem('vistr-admin', key);
+      document.getElementById('note').textContent = `${messages.length} message(s), ${reviews.length} review(s).`;
+      out.innerHTML = `<h2>Messages</h2>${messages.map(m => `<div class="card">
+          <b>${esc(m.topic)}</b> <small>${when(m.at)}</small><br>
+          <small>${esc(m.name || '(no name)')} &lt;<a href="mailto:${esc(m.email)}">${esc(m.email)}</a>&gt;${m.playerCode ? ` · Player ${esc(m.playerCode)}` : ''} · ${esc(m.app || '')}</small>
+          <p>${esc(m.message)}</p>
+          <div class="row"><a href="mailto:${esc(m.email)}?subject=${encodeURIComponent('Re: Vistr ' + m.topic)}"><button type="button">Reply by email</button></a>
+          <button class="warn" data-del="${esc(m.id)}">Delete</button></div></div>`).join('') || '<p class="meta">No messages.</p>'}
+        <h2>Reviews</h2>${reviews.map(r => `<div class="card">
+          <span class="tag ${esc(r.status)}">${esc(r.status)}</span> <b>${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</b> Player ${esc(r.playerCode)} <small>${when(r.updatedAt)}</small>
+          ${r.text ? `<p>${esc(r.text)}</p>` : ''}
+          <div class="row">${r.status !== 'shown' ? `<button class="ok" data-review="${esc(r.playerCode)}" data-status="shown">Show</button>` : ''}
+          ${r.status !== 'hidden' ? `<button class="warn" data-review="${esc(r.playerCode)}" data-status="hidden">Hide</button>` : ''}</div></div>`).join('') || '<p class="meta">No reviews.</p>'}`;
+    } catch (e) { out.innerHTML = `<p class="meta">${esc(e.message)}</p>`; }
+  }
+  document.getElementById('login').addEventListener('submit', e => { e.preventDefault(); key = e.target.key.value; load(); });
+  document.getElementById('out').addEventListener('click', async e => {
+    const del = e.target.dataset.del, rv = e.target.dataset.review;
+    if (del && confirm('Delete this message?')) { await get('/api/contact/messages?delete=' + encodeURIComponent(del)); load(); }
+    if (rv) { await get(`/api/reviews/all?player=${encodeURIComponent(rv)}&status=${e.target.dataset.status}`); load(); }
+  });
+  if (key) load();
+</script>
+</body>
+</html>
