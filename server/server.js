@@ -166,7 +166,7 @@ function playerStatus(pid) {
   const m = matches.get(activeMatch.get(pid));
   if (!m) return { status: 'free' };
   if (m.mode === 'duo') return { status: 'busy' };
-  return m.status === 'playing' ? { status: 'solo', level: m.level, intensity: m.intensity, endsAt: m.endsAt } : { status: 'free' };
+  return m.status === 'playing' ? { status: 'solo', level: m.level, intensity: m.intensity, lang: m.lang, endsAt: m.endsAt } : { status: 'free' };
 }
 
 function availablePlayers() {
@@ -176,7 +176,7 @@ function availablePlayers() {
     const st = playerStatus(pid);
     if (st.status === 'busy') continue;
     const requested = incoming.has(pid) || requests.has(pid);
-    list.push({ playerCode: store.getPlayer(pid).code, ...st, ...(requested ? { status: st.status, requested: true } : {}) });
+    list.push({ playerCode: store.getPlayer(pid).code, lang: playerLang.get(pid) || 'en', ...st, ...(requested ? { status: st.status, requested: true } : {}) });
   }
   return list.sort((a, b) => (a.status === 'free' ? 0 : 1) - (b.status === 'free' ? 0 : 1) || Number(a.playerCode) - Number(b.playerCode));
 }
@@ -214,15 +214,18 @@ const matches = new Map();          // matchId -> match
 const activeMatch = new Map();      // playerId -> matchId
 
 const intensityFrom = v => (scoring.INTENSITIES.includes(v) ? v : 'intermediate');
+// Game language (the words played). Each player's current one is remembered while online.
+const langFrom = v => (dict.LANGS.includes(v) ? v : 'en');
+const playerLang = new Map();   // playerId -> language they're playing in
 
-function createMatch(level, playerIds, intensity = 'intermediate') {
+function createMatch(level, playerIds, intensity = 'intermediate', lang = 'en') {
   const id = crypto.randomUUID();
   const m = {
-    id, level, intensity: intensityFrom(intensity), mode: playerIds.length > 1 ? 'duo' : 'single', status: 'pending',
+    id, level, intensity: intensityFrom(intensity), lang: langFrom(lang), mode: playerIds.length > 1 ? 'duo' : 'single', status: 'pending',
     startWord: null, startedAt: null, endsAt: null, timer: null,
     players: Object.fromEntries(playerIds.map(pid => [pid, {
       ready: false, score: 0, current: null, used: [], chain: [], lastSeq: 0, pending: false, results: {},
-      streak: 0, skips: 0, hintsUsed: 0, intensity: intensityFrom(intensity), jackpots: [], found: [],
+      streak: 0, skips: 0, hintsUsed: 0, intensity: intensityFrom(intensity), lang: langFrom(lang), jackpots: [], found: [],
     }])),
   };
   matches.set(id, m);
@@ -242,7 +245,8 @@ function matchView(m, forId) {
       ...(pid === forId ? { streak: p.streak, skips: p.skips, skipsLeft: scoring.RULES.maxSkips - p.skips, hintsLeft: engine.status(p).hintsLeft, jackpotsFound: p.found.length, jackpotsTotal: p.jackpots.length } : {}),
     })),
     intensity: m.intensity,
-    rules: engine.publicRules(ROUND_SECONDS, m.intensity),
+    lang: m.lang,
+    rules: engine.publicRules(ROUND_SECONDS, m.intensity, m.lang),
   };
 }
 // ── Two-player games take turns on one shared word ──
@@ -284,7 +288,7 @@ function broadcastMatch(m, type = 'match') {
 
 function startMatch(m) {
   m.status = 'playing';
-  const start = scoring.pickStart(m.level, m.intensity);
+  const start = scoring.pickStart(m.level, m.intensity, m.lang);
   m.startWord = start.word;
   m.startedAt = Date.now();
   m.endsAt = m.startedAt + ROUND_SECONDS * 1000;
@@ -306,11 +310,12 @@ function finishMatch(m, reason) {
   m.status = 'over';
   const ids = Object.keys(m.players);
   if (wasPlaying) {
+    store.countGames(m.mode === 'duo' ? 'duo' : 'solo');
     for (const pid of ids) {
       const p = m.players[pid];
       const opp = ids.find(x => x !== pid);
       store.addResult({
-        playerId: pid, level: m.level, intensity: m.intensity, mode: m.mode, score: p.score, chain: [m.startWord, ...p.chain.filter(c => c.valid).map(c => c.word)],
+        playerId: pid, level: m.level, intensity: m.intensity, lang: m.lang, mode: m.mode, score: p.score, chain: [m.startWord, ...p.chain.filter(c => c.valid).map(c => c.word)],
         moves: p.chain.length, opponentCode: opp ? store.getPlayer(opp).code : null,
         opponentScore: opp ? m.players[opp].score : null, finishedAt: Date.now(),
       });
@@ -320,7 +325,7 @@ function finishMatch(m, reason) {
     activeMatch.delete(pid);
     push(pid, 'match-over', {
       reason, endedBy: m.endedBy || null, match: matchView(m, pid),
-      topTen: store.topTen(pid, m.level, m.intensity), board: store.levelBoard(m.level, m.intensity),
+      topTen: store.topTen(pid, m.level, m.intensity, m.lang), board: store.levelBoard(m.level, m.intensity, m.lang),
     });
   }
   setTimeout(() => matches.delete(m.id), 60_000);
@@ -422,6 +427,19 @@ function serveAdImage(res, url) {
 }
 
 const routes = {
+  // Games played, for the home screen: { total, today }. Admin key adds the breakdown.
+  'GET /api/stats': async (req, res, { url }) => {
+    const st = store.gameStats();
+    send(res, 200, adminOk(url) ? st : { total: st.total, today: st.today });
+  },
+  // The app reports offline games when it next has internet (count since last report).
+  'POST /api/played': async (req, res, { body }) => {
+    const n = Math.floor(Number(body.count));
+    if (!(n >= 1 && n <= 200)) return send(res, 400, { error: 'Bad count.' });
+    if (overLimit('played', clientIp(req), 30, 60 * 60_000)) return send(res, 429, { error: 'Too many reports.' });
+    store.countGames('offline', n);
+    send(res, 200, { ok: true, total: store.gameStats().total });
+  },
   // Contact form. Works signed in or not; signed-in players' ID is added.
   'POST /api/contact': async (req, res, { me, body }) => {
     if (body.website) return send(res, 200, { ok: true });            // filled by spam bots only
@@ -513,7 +531,8 @@ const routes = {
     const m = mid && matches.get(mid);
     send(res, 200, { player: { code: me.code, email: me.email, available: store.isAvailable(me.id) }, match: m ? matchView(m, me.id) : null, me: m ? m.players[me.id] && { current: m.players[me.id].current, chain: m.players[me.id].chain, lastSeq: m.players[me.id].lastSeq, streak: m.players[me.id].streak } : null });
   },
-  'GET /api/events': async (req, res, { me }) => {
+  'GET /api/events': async (req, res, { me, url }) => {
+    if (url.searchParams.get('lang')) playerLang.set(me.id, langFrom(url.searchParams.get('lang')));
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no', ...cors() }); // no-buffering hint for nginx and similar proxies
     // 2 KB of padding first: some older Android WebViews hold back the first events
     // of a stream until enough bytes arrive, which made requests show up late.
@@ -533,13 +552,15 @@ const routes = {
       }
     });
   },
-  'GET /api/players': async (req, res, { me }) => {
+  'GET /api/players': async (req, res, { me, url }) => {
+    const l = url.searchParams.get('lang');
+    if (l && langFrom(l) !== playerLang.get(me.id)) { playerLang.set(me.id, langFrom(l)); broadcastPlayers(); }
     const out = requests.get(me.id);
     const inFrom = incoming.get(me.id);
     send(res, 200, {
       players: availablePlayers(), serverNow: Date.now(), available: store.isAvailable(me.id),
-      outgoing: out ? { to: store.getPlayer(out.to).code, level: out.level, intensity: out.intensity } : null,
-      incoming: inFrom ? { from: store.getPlayer(inFrom).code, level: requests.get(inFrom).level, intensity: requests.get(inFrom).intensity,
+      outgoing: out ? { to: store.getPlayer(out.to).code, level: out.level, intensity: out.intensity, lang: out.lang } : null,
+      incoming: inFrom ? { from: store.getPlayer(inFrom).code, level: requests.get(inFrom).level, intensity: requests.get(inFrom).intensity, lang: requests.get(inFrom).lang,
         expiresIn: Math.max(1, Math.round((requests.get(inFrom).expiresAt - Date.now()) / 1000)),
         inSolo: playerStatus(me.id).status === 'solo' } : null,
     });
@@ -564,14 +585,15 @@ const routes = {
     if (incoming.has(me.id)) return send(res, 409, { error: 'Answer the request you have first.' });
     const timer = setTimeout(() => endRequest(me.id, 'expired'), REQUEST_MS);
     const intensity = intensityFrom(body.intensity);
-    requests.set(me.id, { to: target.id, level, intensity, timer, expiresAt: Date.now() + REQUEST_MS });
+    const lang = langFrom(body.lang || playerLang.get(me.id));
+    requests.set(me.id, { to: target.id, level, intensity, lang, timer, expiresAt: Date.now() + REQUEST_MS });
     incoming.set(target.id, me.id);
     const st = playerStatus(target.id);
     const theirMatch = matches.get(activeMatch.get(target.id));
-    push(target.id, 'request', { from: me.code, level, intensity, expiresIn: REQUEST_MS / 1000,
+    push(target.id, 'request', { from: me.code, level, intensity, lang, expiresIn: REQUEST_MS / 1000,
       inSolo: st.status === 'solo', soloScore: st.status === 'solo' ? theirMatch.players[target.id].score : null });
     broadcastPlayers();
-    send(res, 200, { ok: true, to: code, level, intensity, expiresIn: REQUEST_MS / 1000 });
+    send(res, 200, { ok: true, to: code, level, intensity, lang, expiresIn: REQUEST_MS / 1000 });
   },
   'POST /api/request/cancel': async (req, res, { me }) => { endRequest(me.id, 'cancelled', me.id); send(res, 200, { ok: true }); },
   'POST /api/request/respond': async (req, res, { me, body }) => {
@@ -587,7 +609,7 @@ const routes = {
       const old = matches.get(activeMatch.get(pid));
       if (old) finishMatch(old, 'switched');
     }
-    const m = createMatch(r.level, [fromId, me.id], r.intensity);
+    const m = createMatch(r.level, [fromId, me.id], r.intensity, r.lang);
     push(fromId, 'request-ended', { reason: 'accepted', by: me.code, from: store.getPlayer(fromId).code, to: me.code });
     broadcastMatch(m, 'match');
     send(res, 200, { match: matchView(m, me.id) });
@@ -597,7 +619,7 @@ const routes = {
     if (!dict.LEVELS.includes(level)) return send(res, 400, { error: 'Pick a word length from 4 to 7.' });
     const old = matches.get(activeMatch.get(me.id));
     if (old) finishMatch(old, 'abandoned');
-    const m = createMatch(level, [me.id], body.intensity);
+    const m = createMatch(level, [me.id], body.intensity, body.lang);
     send(res, 200, { match: matchView(m, me.id) });
   },
   'POST /api/match/ready': async (req, res, { me }) => {
@@ -651,10 +673,11 @@ const routes = {
     const level = Number(url.searchParams.get('level'));
     if (!dict.LEVELS.includes(level)) return send(res, 400, { error: 'Pick a word length from 4 to 7.' });
     const intensity = intensityFrom(url.searchParams.get('intensity'));
-    send(res, 200, { level, intensity, topTen: store.topTen(me.id, level, intensity), board: store.levelBoard(level, intensity) });
+    const lang = langFrom(url.searchParams.get('lang'));
+    send(res, 200, { level, intensity, lang, topTen: store.topTen(me.id, level, intensity, lang), board: store.levelBoard(level, intensity, lang) });
   },
 };
-const PUBLIC = new Set(['POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
+const PUBLIC = new Set(['GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -699,7 +722,7 @@ if (require.main === module) {
     console.log(`Vistr server running.`);
     console.log(`  On this PC:        http://localhost:${PORT}`);
     if (nets.length) console.log(`  From phones on Wi-Fi: ${nets.join('  ')}`);
-    console.log('  Words per length:', Object.entries(dict.stats()).map(([L, v]) => `${L}: ${v.words}`).join(', '));
+    console.log('  Languages:', dict.LANGS.join(', '), '| English words per length:', Object.entries(dict.stats()).map(([L, v]) => `${L}: ${v.words}`).join(', '));
     console.log(store.remote ? '  Data: kept in Upstash (and db.json)' : '  Data: ' + (process.env.VISTR_DB || 'server/data/db.json'));
     console.log(`  Admin (messages, reviews): http://localhost:${PORT}/admin.html  key: ${process.env.ADMIN_KEY ? '(your ADMIN_KEY)' : ADMIN_KEY}`);
     console.log('Leave this window open while people play. Press Ctrl+C to stop.');

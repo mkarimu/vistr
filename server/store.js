@@ -8,12 +8,12 @@ const path = require('path');
 
 const FILE = process.env.VISTR_DB || path.join(__dirname, 'data', 'db.json');
 
-let db = { players: {}, sessions: {}, results: [], adStats: {}, messages: [], reviews: {} };
+let db = { players: {}, sessions: {}, results: [], adStats: {}, messages: [], reviews: {}, stats: {} };
 try {
   db = { ...db, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) };
 } catch (_) { /* first run */ }
 
-const PARTS = ['players', 'sessions', 'results', 'adStats', 'messages', 'reviews'];
+const PARTS = ['players', 'sessions', 'results', 'adStats', 'messages', 'reviews', 'stats'];
 let timer = null;
 function save(part) {
   if (REMOTE) { if (part) dirty.add(part); else PARTS.forEach(x => dirty.add(x)); scheduleRemote(); }
@@ -123,7 +123,7 @@ function deleteSession(token) { delete db.sessions[token]; save('sessions'); }
 // Results: keep every player's 10 best per level (the spec's "top 10 saved").
 function addResult(r) {
   db.results.push(r);
-  const same = x => x.playerId === r.playerId && x.level === r.level && intensityOf(x) === intensityOf(r);
+  const same = x => x.playerId === r.playerId && x.level === r.level && intensityOf(x) === intensityOf(r) && langOf(x) === langOf(r);
   const keep = new Set(db.results.filter(same).sort(byScore).slice(0, 10));
   db.results = db.results.filter(x => !same(x) || keep.has(x));
   save('results');
@@ -132,16 +132,17 @@ function byScore(a, b) { return b.score - a.score || a.finishedAt - b.finishedAt
 
 // Results from before intensities existed count as Intermediate.
 const intensityOf = r => r.intensity || 'intermediate';
+const langOf = r => r.lang || 'en';   // results from before languages existed are English
 
-function topTen(playerId, level, intensity = 'intermediate') {
-  return db.results.filter(x => x.playerId === playerId && x.level === level && intensityOf(x) === intensity).sort(byScore).slice(0, 10);
+function topTen(playerId, level, intensity = 'intermediate', lang = 'en') {
+  return db.results.filter(x => x.playerId === playerId && x.level === level && intensityOf(x) === intensity && langOf(x) === lang).sort(byScore).slice(0, 10);
 }
 
 // All-time board: each player's single best game at the level.
-function levelBoard(level, intensity = 'intermediate', limit = 20) {
+function levelBoard(level, intensity = 'intermediate', lang = 'en', limit = 20) {
   const best = new Map();
   for (const r of db.results) {
-    if (r.level !== level || intensityOf(r) !== intensity) continue;
+    if (r.level !== level || intensityOf(r) !== intensity || langOf(r) !== lang) continue;
     const cur = best.get(r.playerId);
     if (!cur || byScore(r, cur) < 0) best.set(r.playerId, r);
   }
@@ -163,6 +164,25 @@ function countAd(id, type) {
   save('adStats');
 }
 function adStats() { return db.adStats || {}; }
+
+// Games played: online solo, online two-player, and offline games the app reports later.
+function countGames(kind, n = 1) {
+  const st = (db.stats = db.stats || {});
+  const day = new Date().toISOString().slice(0, 10);
+  st.total = (st.total || 0) + n;
+  st[kind] = (st[kind] || 0) + n;
+  st.byDay = st.byDay || {};
+  st.byDay[day] = (st.byDay[day] || 0) + n;
+  const days = Object.keys(st.byDay).sort();
+  for (const d of days.slice(0, Math.max(0, days.length - 400))) delete st.byDay[d];   // keep ~13 months
+  save('stats');
+}
+function gameStats() {
+  const st = db.stats || {};
+  const day = new Date().toISOString().slice(0, 10);
+  return { total: st.total || 0, today: st.byDay?.[day] || 0, solo: st.solo || 0, duo: st.duo || 0, offline: st.offline || 0,
+    players: Object.keys(db.players).length, byDay: st.byDay || {} };
+}
 
 // Contact form messages (newest last). Kept until you delete them.
 function addMessage(m) {
@@ -198,6 +218,7 @@ function setReviewStatus(playerCode, status) {
 }
 
 module.exports = {
+  countGames, gameStats,
   addMessage, listMessages, deleteMessage, setReview, getReview, allReviews, setReviewStatus,
   ready, flushRemote, remote: !!REMOTE,
   countAd, adStats, isAvailable, setAvailable,

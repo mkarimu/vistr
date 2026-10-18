@@ -723,3 +723,28 @@ dialog.reader[open] { display: flex; }
 .menu-list button:nth-child(7) .ic { background: var(--sky); }
 
 @media (max-width: 380px) { .menu-btn { width: 40px; height: 40px; } }
+
+/* Games played counter under Play solo */
+.plays { margin: -8px 0 0; text-align: center; color: var(--mute); font-size: 0.95rem; }
+.plays b { color: var(--sunshine); font-weight: 700; }
+.plays::before { content: "🎮 "; }
+
+/* Language picker at the top of the menu */
+.menu-lang { padding: 10px 2px 2px; }
+.menu-lang-label { margin: 0 0 8px; color: var(--mute); font-weight: 600; font-size: 0.95rem; }
+.lang-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.lang-chips button {
+  font: inherit; font-weight: 600; font-size: 0.95rem; color: var(--cream); cursor: pointer;
+  padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); border: 2px solid rgba(255, 255, 255, 0.18);
+}
+.lang-chips button[aria-checked="true"] { background: var(--lime); border-color: var(--lime); color: var(--ink); }
+.lang-chips.locked button:not([aria-checked="true"]) { opacity: 0.45; }
+.lang-note { margin: 8px 0 0; font-size: 0.9rem; font-weight: 600; color: var(--sun, #ffd23f); }
+.lang-note.show { animation: lang-nudge 0.4s; }
+@keyframes lang-nudge { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+.lang-tag { font-size: 0.75rem; color: var(--mute); border: 1px solid rgba(255,255,255,0.25); border-radius: 999px; padding: 0 6px; margin-left: 4px; }
+
+/* Longer words in other languages (Principiante, Intermédiaire …) must still fit three across */
+.intensity { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.intensity button { min-width: 0; padding: 6px 4px; }
+.intensity b { font-size: clamp(0.78rem, 3.7vw, 0.98rem); max-width: 100%; overflow-wrap: anywhere; text-align: center; line-height: 1.15; }

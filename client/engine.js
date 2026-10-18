@@ -20,6 +20,61 @@
   };
   const A_Z = 'abcdefghijklmnopqrstuvwxyz';
 
+  // Languages: the letters on the drums and the rare letters worth extra (rarest +3,
+  // next +1, from how often each letter appears in that language's words).
+  const LANGS = {
+    en: { name: 'English', alphabet: A_Z, hot: { j: 3, q: 3, x: 3, z: 3, k: 1, v: 1, w: 1, y: 1 } },
+    es: { name: 'Español', alphabet: 'abcdefghijklmnñopqrstuvwxyz', hot: { ñ: 3, q: 3, x: 3, y: 3, z: 3, k: 3, w: 3, f: 1, h: 1, j: 1 } },
+    fr: { name: 'Français', alphabet: A_Z, hot: { k: 3, w: 3, j: 3, q: 3, x: 3, y: 3, z: 3, f: 1, h: 1, v: 1 } },
+    pt: { name: 'Português', alphabet: A_Z, hot: { k: 3, w: 3, y: 3, q: 3, x: 3, z: 3, j: 3, f: 1, h: 1, v: 1 } },
+    sw: { name: 'Kiswahili', alphabet: A_Z, hot: { c: 3, j: 3, v: 3, y: 3, q: 3, x: 3, f: 1, p: 1, z: 1 } },
+  };
+  const LANG_CODES = Object.keys(LANGS);
+  const langOf = l => (LANGS[l] ? l : 'en');
+
+  // The game's own messages in each language. {W} word, {n} number, {i} letter position, {L} letter.
+  const MSG = {
+    en: { illegal: 'Change exactly one letter.', repeat: '{W} was already used this round.', valid: '{W} +{n}', jackpot: 'JACKPOT! {W} +{n}',
+      fresh: ". No moves left, so here's a fresh word: {W}", missPen: '{W} is not a word. −{n}', missFree: '{W} is not a word. No points lost.',
+      hintAdv: 'No hints at Advanced.', hintNone: 'No hints left this round.', hintNoMoves: 'No moves from this word. Try Next word.',
+      hint1: 'Try rolling letter {i}: 1 real word hides there.', hintN: 'Try rolling letter {i}: {n} real words hide there.',
+      skipEnd: 'That was skip number {n}, so the round is over.', skipNew: 'New word: {W}. ', skipLast: 'Your next skip ends the round.',
+      skipLeft1: '1 free skip left.', skipLeftN: '{n} free skips left.',
+      pWord: 'Word', pHot: 'Hot letter {L}', pStreak: '{n} in a row', pJackpot: 'Jackpot word', pMiss: 'Not a word' },
+    es: { illegal: 'Cambia exactamente una letra.', repeat: '{W} ya se usó en esta ronda.', valid: '{W} +{n}', jackpot: '¡JACKPOT! {W} +{n}',
+      fresh: '. No quedan jugadas, aquí tienes una palabra nueva: {W}', missPen: '{W} no es una palabra. −{n}', missFree: '{W} no es una palabra. No pierdes puntos.',
+      hintAdv: 'No hay pistas en Avanzado.', hintNone: 'No te quedan pistas en esta ronda.', hintNoMoves: 'No hay jugadas desde esta palabra. Prueba Otra palabra.',
+      hint1: 'Prueba la letra {i}: ahí se esconde 1 palabra.', hintN: 'Prueba la letra {i}: ahí se esconden {n} palabras.',
+      skipEnd: 'Ese fue el salto número {n}, así que la ronda terminó.', skipNew: 'Palabra nueva: {W}. ', skipLast: 'Tu próximo salto termina la ronda.',
+      skipLeft1: 'Te queda 1 salto gratis.', skipLeftN: 'Te quedan {n} saltos gratis.',
+      pWord: 'Palabra', pHot: 'Letra especial {L}', pStreak: '{n} seguidas', pJackpot: 'Palabra premio', pMiss: 'No es palabra' },
+    fr: { illegal: 'Change exactement une lettre.', repeat: '{W} a déjà été joué dans cette manche.', valid: '{W} +{n}', jackpot: 'JACKPOT ! {W} +{n}',
+      fresh: ". Plus aucun coup possible, voici un nouveau mot : {W}", missPen: "{W} n'est pas un mot. −{n}", missFree: "{W} n'est pas un mot. Aucun point perdu.",
+      hintAdv: "Pas d'indice en Avancé.", hintNone: "Plus d'indice pour cette manche.", hintNoMoves: 'Aucun coup possible depuis ce mot. Essaie Mot suivant.',
+      hint1: "Essaie la lettre {i} : 1 vrai mot s'y cache.", hintN: "Essaie la lettre {i} : {n} vrais mots s'y cachent.",
+      skipEnd: "C'était le passage n° {n}, la manche est terminée.", skipNew: 'Nouveau mot : {W}. ', skipLast: 'Ton prochain passage termine la manche.',
+      skipLeft1: 'Il te reste 1 passage gratuit.', skipLeftN: 'Il te reste {n} passages gratuits.',
+      pWord: 'Mot', pHot: 'Lettre rare {L}', pStreak: "{n} d'affilée", pJackpot: 'Mot jackpot', pMiss: 'Pas un mot' },
+    pt: { illegal: 'Mude exatamente uma letra.', repeat: '{W} já foi usada nesta rodada.', valid: '{W} +{n}', jackpot: 'JACKPOT! {W} +{n}',
+      fresh: '. Sem jogadas possíveis, aqui está uma palavra nova: {W}', missPen: '{W} não é uma palavra. −{n}', missFree: '{W} não é uma palavra. Nenhum ponto perdido.',
+      hintAdv: 'Sem dicas no Avançado.', hintNone: 'Sem dicas restantes nesta rodada.', hintNoMoves: 'Não há jogadas a partir desta palavra. Tente Próxima palavra.',
+      hint1: 'Tente a letra {i}: 1 palavra se esconde ali.', hintN: 'Tente a letra {i}: {n} palavras se escondem ali.',
+      skipEnd: 'Esse foi o pulo número {n}, então a rodada acabou.', skipNew: 'Palavra nova: {W}. ', skipLast: 'Seu próximo pulo encerra a rodada.',
+      skipLeft1: 'Resta 1 pulo grátis.', skipLeftN: 'Restam {n} pulos grátis.',
+      pWord: 'Palavra', pHot: 'Letra rara {L}', pStreak: '{n} seguidas', pJackpot: 'Palavra jackpot', pMiss: 'Não é palavra' },
+    sw: { illegal: 'Badilisha herufi moja tu.', repeat: '{W} imeshatumika katika raundi hii.', valid: '{W} +{n}', jackpot: 'JACKPOT! {W} +{n}',
+      fresh: '. Hakuna hatua zaidi, hili hapa neno jipya: {W}', missPen: '{W} si neno. −{n}', missFree: '{W} si neno. Hupotezi pointi.',
+      hintAdv: 'Hakuna vidokezo katika Kiwango cha Juu.', hintNone: 'Vidokezo vimekwisha kwa raundi hii.', hintNoMoves: 'Hakuna hatua kutoka neno hili. Jaribu Neno jingine.',
+      hint1: 'Jaribu herufi ya {i}: neno 1 limejificha hapo.', hintN: 'Jaribu herufi ya {i}: maneno {n} yamejificha hapo.',
+      skipEnd: 'Huo ulikuwa mruko wa {n}, kwa hiyo raundi imekwisha.', skipNew: 'Neno jipya: {W}. ', skipLast: 'Mruko wako ujao utamaliza raundi.',
+      skipLeft1: 'Umebakiwa na mruko 1 wa bure.', skipLeftN: 'Umebakiwa na miruko {n} ya bure.',
+      pWord: 'Neno', pHot: 'Herufi adimu {L}', pStreak: '{n} mfululizo', pJackpot: 'Neno la jackpot', pMiss: 'Si neno' },
+  };
+  function msg(lang, key, v = {}) {
+    const t = (MSG[langOf(lang)] || MSG.en)[key] ?? MSG.en[key];
+    return t.replace(/\{(\w)\}/g, (_, k) => (v[k] ?? ''));
+  }
+
   // Game intensity: how hard the words are, how far the jackpots hide, what a miss
   // costs and how many hints you get. Each intensity has its own leaderboards.
   const INTENSITY = {
@@ -43,7 +98,7 @@
   function neighbours(word, dict) {
     const out = [];
     for (let i = 0; i < word.length; i++) {
-      for (const c of A_Z) {
+      for (const c of (dict.alphabet || A_Z)) {
         if (c === word[i]) continue;
         const cand = word.slice(0, i) + c + word.slice(i + 1);
         if (dict.has(cand)) out.push(cand);
@@ -53,14 +108,14 @@
   }
 
   // Points for one real word. `prev` is the word before the move.
-  function scoreMove({ word, prev, streak, isJackpot }) {
-    const parts = [{ label: 'Word', points: RULES.word }];
+  function scoreMove({ word, prev, streak, isJackpot, lang }) {
+    const parts = [{ label: msg(lang, 'pWord'), points: RULES.word }];
     const i = [...word].findIndex((c, k) => c !== prev[k]);
     const letter = word[i];
-    const hot = RULES.hotLetters[letter];
-    if (hot) parts.push({ label: `Hot letter ${letter.toUpperCase()}`, points: hot, kind: 'hot' });
-    if (streak >= RULES.streakFrom) parts.push({ label: `${streak} in a row`, points: RULES.streakBonus, kind: 'streak' });
-    if (isJackpot) parts.push({ label: 'Jackpot word', points: RULES.jackpot, kind: 'jackpot' });
+    const hot = (LANGS[langOf(lang)].hot || RULES.hotLetters)[letter];
+    if (hot) parts.push({ label: msg(lang, 'pHot', { L: letter.toUpperCase() }), points: hot, kind: 'hot' });
+    if (streak >= RULES.streakFrom) parts.push({ label: msg(lang, 'pStreak', { n: streak }), points: RULES.streakBonus, kind: 'streak' });
+    if (isJackpot) parts.push({ label: msg(lang, 'pJackpot'), points: RULES.jackpot, kind: 'jackpot' });
     return { points: parts.reduce((t, p) => t + p.points, 0), parts };
   }
 
@@ -155,8 +210,8 @@
     return !neighbours(word, dict).some(n => !used.includes(n));
   }
 
-  function newPlayer(start, intensity) {
-    return { intensity: INTENSITY[intensity] ? intensity : 'intermediate', score: 0, streak: 0, skips: 0, hintsUsed: 0,
+  function newPlayer(start, intensity, lang) {
+    return { intensity: INTENSITY[intensity] ? intensity : 'intermediate', lang: langOf(lang), score: 0, streak: 0, skips: 0, hintsUsed: 0,
       current: start.word, used: [start.word], jackpots: [...start.jackpots], found: [], chain: [] };
   }
 
@@ -165,11 +220,11 @@
   function hint(p, dict, opts = {}) {
     const prof = profile(p.intensity);
     const left = prof.hints - (p.hintsUsed || 0);
-    if (left <= 0) return { error: prof.hints === 0 ? 'No hints at Advanced.' : 'No hints left this round.' };
+    if (left <= 0) return { error: msg(p.lang, prof.hints === 0 ? 'hintAdv' : 'hintNone') };
     let best = null;
     for (let i = 0; i < p.current.length; i++) {
       let real = 0, easyCount = 0;
-      for (const c of A_Z) {
+      for (const c of (dict.alphabet || A_Z)) {
         if (c === p.current[i]) continue;
         const w = p.current.slice(0, i) + c + p.current.slice(i + 1);
         if (dict.has(w) && !p.used.includes(w)) { real++; if (opts.easy && opts.easy.has(w)) easyCount++; }
@@ -177,45 +232,46 @@
       const score = easyCount * 10 + real;
       if (real && (!best || score > best.score)) best = { slot: i, score, real };
     }
-    if (!best) return { error: 'No moves from this word. Try Next word.' };
+    if (!best) return { error: msg(p.lang, 'hintNoMoves') };
     p.hintsUsed = (p.hintsUsed || 0) + 1;
     return { slot: best.slot, options: best.real, hintsLeft: prof.hints === Infinity ? -1 : prof.hints - p.hintsUsed,
-      message: `Try rolling letter ${best.slot + 1}: ${best.real} real word${best.real === 1 ? '' : 's'} hide there.` };
+      message: msg(p.lang, best.real === 1 ? 'hint1' : 'hintN', { i: best.slot + 1, n: best.real }) };
   }
 
   // Judge one move and update the player. `fresh()` deals a new start at a dead end.
   function applyMove(p, word, dict, fresh) {
     word = String(word || '').toLowerCase();
+    const L = p.lang, alpha = dict.alphabet || A_Z;
     let result;
     const diff = word.length === p.current.length ? [...word].filter((c, i) => c !== p.current[i]).length : -1;
-    if (!/^[a-z]+$/.test(word) || diff !== 1) {
-      result = { outcome: 'illegal', message: 'Change exactly one letter.' };
+    if (![...word].every(c => alpha.includes(c)) || !word || diff !== 1) {
+      result = { outcome: 'illegal', message: msg(L, 'illegal') };
     } else if (p.used.includes(word)) {
-      result = { outcome: 'repeat', message: `${word.toUpperCase()} was already used this round.` };
+      result = { outcome: 'repeat', message: msg(L, 'repeat', { W: word.toUpperCase() }) };
     } else if (dict.has(word)) {
       p.streak += 1;
       const isJackpot = p.jackpots.includes(word) && !p.found.includes(word);
-      const { points, parts } = scoreMove({ word, prev: p.current, streak: p.streak, isJackpot });
+      const { points, parts } = scoreMove({ word, prev: p.current, streak: p.streak, isJackpot, lang: L });
       if (isJackpot) p.found.push(word);
       p.score += points; p.current = word; p.used.push(word);
       p.chain.push({ word, valid: true, points });
       result = { outcome: 'valid', points, parts, jackpot: isJackpot,
-        message: isJackpot ? `JACKPOT! ${word.toUpperCase()} +${points}` : `${word.toUpperCase()} +${points}` };
+        message: msg(L, isJackpot ? 'jackpot' : 'valid', { W: word.toUpperCase(), n: points }) };
       if (isDeadEnd(word, p.used, dict)) {
         const next = fresh();
         p.current = next.word; p.used.push(next.word);
         p.jackpots = [...next.jackpots]; p.found = [];
         p.chain.push({ word: next.word, valid: true, fresh: true });
         result.fresh = next.word;
-        result.message += `. No moves left, so here's a fresh word: ${next.word.toUpperCase()}`;
+        result.message += msg(L, 'fresh', { W: next.word.toUpperCase() });
       }
     } else {
       const miss = profile(p.intensity).miss;
       p.streak = 0;
       p.score += miss;
       p.chain.push({ word, valid: false, points: miss });
-      result = { outcome: 'invalid', points: miss, parts: [{ label: 'Not a word', points: miss }],
-        message: miss ? `${word.toUpperCase()} is not a word. −${Math.abs(miss)}` : `${word.toUpperCase()} is not a word. No points lost.` };
+      result = { outcome: 'invalid', points: miss, parts: [{ label: msg(L, 'pMiss'), points: miss }],
+        message: msg(L, miss ? 'missPen' : 'missFree', { W: word.toUpperCase(), n: Math.abs(miss) }) };
     }
     return Object.assign(result, { word }, status(p));
   }
@@ -234,7 +290,7 @@
     p.streak = 0;
     if (p.skips >= RULES.maxSkips) {
       return Object.assign({ outcome: 'skip', ended: true,
-        message: `That was skip number ${RULES.maxSkips}, so the round is over.` }, status(p));
+        message: msg(p.lang, 'skipEnd', { n: RULES.maxSkips }) }, status(p));
     }
     const next = fresh();
     p.current = next.word; p.used.push(next.word);
@@ -242,17 +298,17 @@
     p.chain.push({ word: next.word, valid: true, fresh: true });
     const left = RULES.maxSkips - p.skips;
     return Object.assign({ outcome: 'skip', fresh: next.word,
-      message: `New word: ${next.word.toUpperCase()}. ` + (left === 1 ? 'Your next skip ends the round.' : `${left - 1} free skip${left - 1 === 1 ? '' : 's'} left.`) }, status(p));
+      message: msg(p.lang, 'skipNew', { W: next.word.toUpperCase() }) + msg(p.lang, left === 1 ? 'skipLast' : left - 1 === 1 ? 'skipLeft1' : 'skipLeftN', { n: left - 1 }) }, status(p));
   }
 
   // The rules as the app shows them on the Start screen.
-  function publicRules(roundSeconds, intensity) {
-    const prof = profile(intensity);
+  function publicRules(roundSeconds, intensity, lang) {
+    const prof = profile(intensity), l = langOf(lang);
     return { round: roundSeconds || RULES.round, word: RULES.word, miss: prof.miss, jackpot: RULES.jackpot,
-      hotLetters: RULES.hotLetters, streakFrom: RULES.streakFrom, maxSkips: RULES.maxSkips,
+      lang: l, alphabet: LANGS[l].alphabet, hotLetters: LANGS[l].hot, streakFrom: RULES.streakFrom, maxSkips: RULES.maxSkips,
       intensity: INTENSITY[intensity] ? intensity : 'intermediate', intensityLabel: prof.label,
       hints: prof.hints === Infinity ? -1 : prof.hints };
   }
 
-  return { RULES, LEVELS: [4, 5, 6, 7], INTENSITY, INTENSITIES, poolFor, hint, neighbours, scoreMove, explore, jackpotsFor, pickStart, isDeadEnd, newPlayer, applyMove, applySkip, status, publicRules };
+  return { RULES, LANGS, LANG_CODES, langOf, msg, LEVELS: [4, 5, 6, 7], INTENSITY, INTENSITIES, poolFor, hint, neighbours, scoreMove, explore, jackpotsFor, pickStart, isDeadEnd, newPlayer, applyMove, applySkip, status, publicRules };
 }));

@@ -99,6 +99,7 @@
       <p class="hint intensity-about" data-intensity-about></p>
 
       <button class="btn primary big" type="button" data-action="solo">Play solo</button>
+      <p class="plays" data-plays hidden></p>
 
       <section class="together" aria-labelledby="together-title">
         <!-- Offline: what the game is, and the way to go online -->
@@ -220,6 +221,17 @@
       <span class="wordmark small" aria-hidden="true"><span>V</span><span>i</span><span>s</span><span>t</span><span>r</span></span>
       <button type="button" class="x" data-close aria-label="Close menu">×</button>
     </div>
+    <div class="menu-lang">
+      <p class="menu-lang-label"><span aria-hidden="true">🌐</span> Language</p>
+      <div class="lang-chips" role="radiogroup" aria-label="Language" data-no-t>
+        <button type="button" role="radio" data-lang="en" lang="en">English</button>
+        <button type="button" role="radio" data-lang="es" lang="es">Español</button>
+        <button type="button" role="radio" data-lang="fr" lang="fr">Français</button>
+        <button type="button" role="radio" data-lang="pt" lang="pt">Português</button>
+        <button type="button" role="radio" data-lang="sw" lang="sw">Kiswahili</button>
+      </div>
+      <p class="lang-note" data-lang-note hidden></p>
+    </div>
     <nav class="menu-list">
       <button type="button" data-page="about"><span class="ic" aria-hidden="true">★</span>About Vistr</button>
       <button type="button" data-page="how-to"><span class="ic" aria-hidden="true">?</span>How to play</button>
@@ -256,6 +268,7 @@
     </div>
   </dialog>
 
+  <script src="i18n.js"></script>
   <script src="engine.js"></script>
   <script src="app.js"></script>
 </body>

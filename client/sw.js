@@ -1,6 +1,6 @@
 // Caches the app shell so the installed app opens instantly. API calls always go to the network.
-const CACHE = 'vistr-v20';
-const SHELL = ['./', 'index.html', 'styles.css', 'about.html', 'how-to.html', 'privacy.html', 'terms.html', 'contact.html', 'reviews.html', 'pages.css', 'bg.svg', 'config.js', 'engine.js', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CACHE = 'vistr-v22';
+const SHELL = ['./', 'index.html', 'styles.css', 'about.html', 'how-to.html', 'privacy.html', 'terms.html', 'contact.html', 'reviews.html', 'pages.css', 'i18n.js', 'about.es.html', 'about.fr.html', 'about.pt.html', 'about.sw.html', 'how-to.es.html', 'how-to.fr.html', 'how-to.pt.html', 'how-to.sw.html', 'bg.svg', 'config.js', 'engine.js', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

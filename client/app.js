@@ -2,7 +2,10 @@
 (() => {
   'use strict';
 
+  const E = window.VistrEngine;
   const A_Z = 'abcdefghijklmnopqrstuvwxyz';
+  // The letters on the drums: the current game's language (Spanish adds Ñ).
+  const abc = () => S.match?.rules?.alphabet || E.LANGS[S.match?.lang || S.lang]?.alphabet || A_Z;
   const isNative = !!window.Capacitor?.isNativePlatform?.();
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -24,6 +27,9 @@
     player: null,
     level: [4, 5, 6, 7].includes(Number(saved('vistr.level'))) ? Number(saved('vistr.level')) : 5,
     intensity: ['learner', 'intermediate', 'advanced'].includes(saved('vistr.intensity')) ? saved('vistr.intensity') : 'learner',
+    // Language of the whole game: the words played and the app's text.
+    lang: E.LANGS[saved('vistr.lang')] ? saved('vistr.lang')
+      : (navigator.languages || [navigator.language || 'en']).map(l => String(l).slice(0, 2).toLowerCase()).find(l => E.LANGS[l]) || 'en',
     screen: null,
     match: null,
     events: null,
@@ -39,6 +45,51 @@
     const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal;
   }
 
+  // ───────────────────────── text in the player's language ─────────────────────────
+  // English is written in the code; client/i18n.js has the other languages, keyed by
+  // the English text. {name} parts are filled in. Anything missing stays English.
+  const I18N = window.VISTR_I18N || {};
+  const fill = (s, v) => (v ? String(s).replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m)) : String(s));
+  function t(en, v) { const x = (I18N[S.lang] || {})[en]; return fill(x ?? en, v); }
+  // Server messages arrive in English: exact matches first, then patterns like "Player {p} ...".
+  const patterns = {};
+  function tr(en) {
+    const table = I18N[S.lang]; if (!table || !en) return en;
+    if (table[en]) return table[en];
+    if (!patterns[S.lang]) patterns[S.lang] = Object.keys(table).filter(k => k.includes('{')).map(k => {
+      const names = [];
+      const rx = new RegExp('^' + k.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\{(\w+)\}/g, (_, n) => { names.push(n); return '(.+?)'; }) + '$');
+      return { rx, names, out: table[k] };
+    });
+    for (const p of patterns[S.lang]) {
+      const m = en.match(p.rx);
+      if (m) return fill(p.out, Object.fromEntries(p.names.map((n, i) => [n, m[i + 1]])));
+    }
+    return en;
+  }
+  // Screens come from the HTML templates in English: translate their text and labels.
+  const original = new WeakMap();
+  function translateDom(root) {
+    if (!root) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.parentElement?.closest('script, style, [data-no-t]')) continue;
+      if (!original.has(n)) original.set(n, n.nodeValue);
+      const en = original.get(n), key = en.trim();
+      if (!key || !/[A-Za-z]/.test(key)) continue;
+      const x = t(key);
+      n.nodeValue = x === key ? en : en.replace(key, x);
+    }
+    for (const el of root.querySelectorAll ? [root, ...root.querySelectorAll('[placeholder], [aria-label], [title], [alt]')] : []) {
+      for (const at of ['placeholder', 'aria-label', 'title', 'alt']) {
+        if (!el.hasAttribute || !el.hasAttribute(at)) continue;
+        const k = `data-en-${at}`;
+        if (!el.hasAttribute(k)) el.setAttribute(k, el.getAttribute(at));
+        el.setAttribute(at, t(el.getAttribute(k)));
+      }
+    }
+  }
+
   // ───────────────────────── API ─────────────────────────
   async function api(method, path, body) {
     const r = await fetch(S.server.replace(/\/$/, '') + path, {
@@ -47,51 +98,53 @@
       body: body ? JSON.stringify(body) : undefined,
     });
     const data = await r.json().catch(() => ({}));
-    if (r.status === 401 && S.token) { sessionEnded(); throw new Error('Your session ended. Sign in again.'); }
-    if (!r.ok && !('outcome' in data)) throw new Error(data.error || `The server answered ${r.status}.`);
+    if (r.status === 401 && S.token) { sessionEnded(); throw new Error(t('Your session ended. Sign in again.')); }
+    if (!r.ok && !('outcome' in data)) throw new Error(data.error ? tr(data.error) : t('The server answered {n}.', { n: r.status }));
     return data;
   }
 
   // ───────────────────────── standalone games (on this device) ─────────────────────────
-  const E = window.VistrEngine;
   const Local = {
-    words: {}, starts: {}, timer: null,
-    async load(L) {
-      if (this.words[L]) return;
-      const get = f => fetch(`words/${f}`).then(r => { if (!r.ok) throw new Error('Could not load the word list.'); return r.text(); });
+    data: {}, timer: null,
+    // Word lists per language: English in words/, others in words/<lang>/.
+    D(lang) { return (this.data[lang] = this.data[lang] || { words: {}, starts: {}, common: {}, easy: {}, pools: {}, blocked: null }); },
+    async load(L, lang = S.lang) {
+      const d = this.D(lang);
+      if (d.words[L]) return;
+      const base = lang === 'en' ? 'words/' : `words/${lang}/`;
+      const get = f => fetch(base + f).then(r => { if (!r.ok) throw new Error(t('Could not load the word list.')); return r.text(); });
       const opt = f => get(f).catch(() => '');   // optional lists
-      const [w, st, common, easy, blocked] = await Promise.all([get(`words_${L}.txt`), get(`start_${L}.txt`), opt(`common_${L}.txt`), opt(`easy_${L}.txt`), this.blocked ? null : opt('blocked.txt')]);
+      const [w, st, common, easy, blocked] = await Promise.all([get(`words_${L}.txt`), get(`start_${L}.txt`), opt(`common_${L}.txt`), opt(`easy_${L}.txt`), d.blocked ? null : opt('blocked.txt')]);
       const lines = t => t.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-      this.words[L] = new Set(lines(w));
-      this.starts[L] = lines(st);
-      this.common = this.common || {};
-      this.common[L] = common ? new Set(lines(common)) : null;
-      this.easy = this.easy || {};
-      this.easy[L] = easy ? new Set(lines(easy)) : null;
-      if (blocked !== null) this.blocked = new Set(lines(blocked || ''));
+      const set = new Set(lines(w));
+      set.alphabet = E.LANGS[lang].alphabet;
+      d.words[L] = set;
+      d.starts[L] = lines(st);
+      d.common[L] = common ? new Set(lines(common)) : null;
+      d.easy[L] = easy ? new Set(lines(easy)) : null;
+      if (blocked !== null) d.blocked = new Set(lines(blocked || ''));
     },
-    opts(L, intensity) { return { blocked: this.blocked, common: this.common[L], easy: this.easy[L], intensity }; },
-    pools: {},
-    pick(L, intensity) {
-      const key = `${L}:${intensity}`;
-      if (!this.pools[key]) this.pools[key] = E.poolFor(this.starts[L], this.opts(L, intensity), this.words[L]);
-      return E.pickStart(this.words[L], this.pools[key], this.opts(L, intensity));
+    opts(L, intensity, lang) { const d = this.D(lang); return { blocked: d.blocked, common: d.common[L], easy: d.easy[L], intensity }; },
+    pick(L, intensity, lang) {
+      const d = this.D(lang), key = `${L}:${intensity}`;
+      if (!d.pools[key]) d.pools[key] = E.poolFor(d.starts[L], this.opts(L, intensity, lang), d.words[L]);
+      return E.pickStart(d.words[L], d.pools[key], this.opts(L, intensity, lang));
     },
     hint(m) {
-      if (m.status !== 'playing') return { error: 'The round is not running.' };
-      return E.hint(m.state, this.words[m.level], this.opts(m.level, m.intensity));
+      if (m.status !== 'playing') return { error: t('The round is not running.') };
+      return E.hint(m.state, this.D(m.lang).words[m.level], this.opts(m.level, m.intensity, m.lang));
     },
     skip(m) {
-      if (m.status !== 'playing' || Date.now() > m.endsAt) return { error: 'Time is up.' };
-      return E.applySkip(m.state, () => this.pick(m.level, m.intensity));
+      if (m.status !== 'playing' || Date.now() > m.endsAt) return { error: t('Time is up.') };
+      return E.applySkip(m.state, () => this.pick(m.level, m.intensity, m.lang));
     },
-    newMatch(L, intensity) {
-      return { local: true, id: 'local', level: L, intensity, mode: 'single', status: 'pending', rules: E.publicRules(undefined, intensity),
+    newMatch(L, intensity, lang = S.lang) {
+      return { local: true, id: 'local', level: L, intensity, lang, mode: 'single', status: 'pending', rules: E.publicRules(undefined, intensity, lang),
         players: [{ me: true, playerCode: 'You', ready: false, online: true, score: 0 }] };
     },
     start(m) {
-      const st = this.pick(m.level, m.intensity);
-      m.state = E.newPlayer(st, m.intensity);
+      const st = this.pick(m.level, m.intensity, m.lang);
+      m.state = E.newPlayer(st, m.intensity, m.lang);
       m.startWord = st.word; m.status = 'playing';
       m.serverNow = Date.now(); m.endsAt = Date.now() + E.RULES.round * 1000;
       m.players[0] = { ...m.players[0], ready: true, jackpotsFound: 0, jackpotsTotal: st.jackpots.length, streak: 0, skipsLeft: E.RULES.maxSkips, hintsLeft: E.status(m.state).hintsLeft };
@@ -99,8 +152,8 @@
       this.timer = setTimeout(() => this.finish(m, 'time'), E.RULES.round * 1000);
     },
     submit(m, word) {
-      if (m.status !== 'playing' || Date.now() > m.endsAt) return { error: 'Time is up.' };
-      return E.applyMove(m.state, word, this.words[m.level], () => this.pick(m.level, m.intensity));
+      if (m.status !== 'playing' || Date.now() > m.endsAt) return { error: t('Time is up.') };
+      return E.applyMove(m.state, word, this.D(m.lang).words[m.level], () => this.pick(m.level, m.intensity, m.lang));
     },
     finish(m, reason) {
       if (m.status === 'over') return;
@@ -108,26 +161,28 @@
       m.status = 'over';
       const p = m.state;
       m.players[0].score = p.score;
-      const top = this.topTen(m.level, m.intensity);
+      const top = this.topTen(m.level, m.intensity, m.lang);
       top.push({ score: p.score, finishedAt: Date.now(), chain: [m.startWord, ...p.chain.filter(c => c.valid).map(c => c.word)] });
       top.sort((a, b) => b.score - a.score || a.finishedAt - b.finishedAt);
-      saved(`vistr.top.${m.level}.${m.intensity}`, JSON.stringify(top.slice(0, 10)));
-      if (S.match === m) { showResults({ reason, local: true, match: m, topTen: this.topTen(m.level, m.intensity), board: [] }); Ads.afterRound(); }
+      saved(this.topKey(m.level, m.intensity, m.lang), JSON.stringify(top.slice(0, 10)));
+      Plays.add();
+      if (S.match === m) { showResults({ reason, local: true, match: m, topTen: this.topTen(m.level, m.intensity, m.lang), board: [] }); Ads.afterRound(); }
     },
-    topTen(L, intensity) {
-      // Scores saved before intensities existed count as Intermediate.
-      const key = saved(`vistr.top.${L}.${intensity}`) ?? (intensity === 'intermediate' ? saved(`vistr.top.${L}`) : null);
+    topKey(L, intensity, lang = 'en') { return lang === 'en' ? `vistr.top.${L}.${intensity}` : `vistr.top.${lang}.${L}.${intensity}`; },
+    topTen(L, intensity, lang = 'en') {
+      // Scores saved before intensities existed count as Intermediate (English).
+      const key = saved(this.topKey(L, intensity, lang)) ?? (lang === 'en' && intensity === 'intermediate' ? saved(`vistr.top.${L}`) : null);
       try { return JSON.parse(key || '[]'); } catch (_) { return []; }
     },
   };
 
   async function startSolo(level) {
     if (S.mode === 'live') {
-      const r = await api('POST', '/api/match/single', { level, intensity: S.intensity });
+      const r = await api('POST', '/api/match/single', { level, intensity: S.intensity, lang: S.lang });
       S.match = r.match;
     } else {
-      await Local.load(level);
-      S.match = Local.newMatch(level, S.intensity);
+      await Local.load(level, S.lang);
+      S.match = Local.newMatch(level, S.intensity, S.lang);
     }
     showReady();
   }
@@ -137,10 +192,10 @@
     const pill = $('#appbar .net-pill');
     if (pill) {
       pill.dataset.net = state === 'waking' ? 'connecting' : state;
-      $('[data-net-text]', pill).textContent = { online: 'Online', offline: 'Offline', connecting: 'Connecting…', waking: 'Waking server…' }[state];
+      $('[data-net-text]', pill).textContent = t({ online: 'Online', offline: 'Offline', connecting: 'Connecting…', waking: 'Waking server…' }[state]);
       if (pill.tagName === 'BUTTON') {
         pill.disabled = state === 'connecting' || state === 'waking';
-        pill.title = state === 'online' ? 'Tap to go offline' : 'Tap to go online';
+        pill.title = t(state === 'online' ? 'Tap to go offline' : 'Tap to go online');
       }
     }
     const go = $('[data-action=go-online]');
@@ -149,7 +204,7 @@
       const busy = state === 'connecting' || state === 'waking';
       go.classList.toggle('connecting', busy);
       go.disabled = busy;
-      $('[data-go-title]', go).textContent = state === 'waking' ? 'Waking up the server…' : busy ? 'Connecting…' : id ? `Go online as Player ${id}` : 'Go online';
+      $('[data-go-title]', go).textContent = state === 'waking' ? t('Waking up the server…') : busy ? t('Connecting…') : id ? t('Go online as Player {p}', { p: id }) : t('Go online');
     }
     $('.together')?.classList.toggle('is-live', state === 'online');
   }
@@ -179,17 +234,17 @@
     const wait = 700 - (Date.now() - started);          // let "Connecting…" show briefly
     if (wait > 0) await new Promise(r => setTimeout(r, wait));
     if (!ok && hostedServer()) {
-      if (!opts.background) toast('Waking up the game server. After a quiet spell this takes up to a minute.');
+      if (!opts.background) toast(t('Waking up the game server. After a quiet spell this takes up to a minute.'));
       ok = await wakeServer();
     }
     if (opts.background && S.screen !== 'home') {
       setNet('offline');
-      if (ok) toast('The game server is ready. Tap Go online to play with others.');
+      if (ok) toast(t('The game server is ready. Tap Go online to play with others.'));
       return false;
     }
     if (!ok) {
       setNet('offline');
-      toast("Can't reach the game server right now. You're still offline.");
+      toast(t("Can't reach the game server right now. You're still offline."));
       return false;
     }
     S.mode = 'live'; saved('vistr.mode', 'live');
@@ -207,7 +262,7 @@
     await becomeAvailable();
     connectEvents();
     showHome();
-    toast(`You're online as Player ${S.player.code}.`);
+    toast(t("You're online as Player {p}.", { p: S.player.code }));
     return true;
   }
   // The app remembers this device's Player ID. Use it to go online without asking
@@ -245,7 +300,7 @@
   async function checkIn() {
     if (S.mode !== 'live' || !S.token) return;
     try {
-      const r = await api('GET', '/api/players');
+      const r = await api('GET', `/api/players?lang=${S.lang}`);
       S.players = r.players; S.playersSkew = r.serverNow - Date.now();
       if (r.incoming && !$('#request-dialog').open) showRequest(r.incoming);
       if (S.outgoing && !r.outgoing) S.outgoing = null;
@@ -269,7 +324,7 @@
   function connectEvents() {
     S.events?.close();
     watch();
-    const es = new EventSource(`${S.server.replace(/\/$/, '')}/api/events?token=${encodeURIComponent(S.token)}`);
+    const es = new EventSource(`${S.server.replace(/\/$/, '')}/api/events?token=${encodeURIComponent(S.token)}&lang=${S.lang}`);
     S.events = es;
     const on = (type, fn) => es.addEventListener(type, e => fn(JSON.parse(e.data)));
     on('players', d => {
@@ -291,7 +346,7 @@
       if (d.reason === 'switched') { // solo game closed to start a two-player game
         const me = d.match.players.find(p => p.me);
         S.match = null; S.game = null;
-        toast(`Solo game saved with ${me ? me.score : 0} points.`);
+        toast(t('Solo game saved with {n} points.', { n: me ? me.score : 0 }));
         return; // the two-player game's Start screen follows right away
       }
       showResults(d); Ads.afterRound();
@@ -428,8 +483,8 @@
       this.current = a;
       const img = this.imageUrl(a);
       const inner = `${img ? `<img src="${esc(img)}" alt="">` : ''}
-        <span class="ad-text"><b>${esc(a.title)}</b>${a.text ? `<small>${esc(a.text)}</small>` : ''}</span>
-        ${a.cta && a.url ? `<span class="ad-cta">${esc(a.cta)}</span>` : ''}<span class="ad-tag">Ad</span>`;
+        <span class="ad-text"><b>${esc(t(a.title))}</b>${a.text ? `<small>${esc(t(a.text))}</small>` : ''}</span>
+        ${a.cta && a.url ? `<span class="ad-cta">${esc(t(a.cta))}</span>` : ''}<span class="ad-tag">${t('Ad')}</span>`;
       slot.innerHTML = a.url ? `<a href="${esc(a.url)}" rel="noopener sponsored">${inner}</a>` : `<div class="ad-body">${inner}</div>`;
       this.colours(slot, a);
       const link = $('a', slot);
@@ -456,8 +511,9 @@
       const dlg = $('#ad-interstitial');
       const card = $('.ad-card', dlg);
       this.colours(card, a);
-      $('[data-title]', dlg).textContent = a.title;
-      $('[data-text]', dlg).textContent = a.text;
+      translateDom(dlg);
+      $('[data-title]', dlg).textContent = t(a.title);
+      $('[data-text]', dlg).textContent = t(a.text);
       const img = $('[data-img]', dlg); const src = this.imageUrl(a);
       img.hidden = !src; if (src) img.src = src;
       const cta = $('[data-cta]', dlg);
@@ -467,7 +523,7 @@
       let left = wait;
       const tick = () => {
         skip.disabled = left > 0;
-        skip.textContent = left > 0 ? `Close in ${left}` : 'Close';
+        skip.textContent = left > 0 ? t('Close in {n}', { n: left }) : t('Close');
         if (left-- > 0) dlg._t = setTimeout(tick, 1000);
       };
       clearTimeout(dlg._t); tick();
@@ -486,6 +542,7 @@
     $('#reader')?.close();
     clearInterval(S.clockTimer);
     app.replaceChildren($(`#t-${id}`).content.cloneNode(true));
+    translateDom(app);
     $$('[data-native-only]').forEach(el => { el.hidden = !isNative; });
     $$('[data-live-only]').forEach(el => { el.hidden = S.mode !== 'live'; });
     $$('[data-standalone-only]').forEach(el => { el.hidden = S.mode === 'live'; });
@@ -501,14 +558,14 @@
   // Shown only when the server can't be reached. Normally the address is built into the app.
   function showServer(message) {
     mount('server', 'server');
-    $('[data-message]').textContent = message || `Can't reach the game server at ${S.server}. Check that it is running and that this device is on the same network.`;
+    $('[data-message]').textContent = message || t("Can't reach the game server at {s}. Check that it is running and that this device is on the same network.", { s: S.server });
     const f = $('[data-form=server]');
     f.url.value = S.server || '';
     f.onsubmit = e => {
       e.preventDefault();
       guard(async () => {
         const url = f.url.value.trim().replace(/\/$/, '');
-        if (!(await reachable(url))) throw new Error(`No Vistr server answered at ${url}.`);
+        if (!(await reachable(url))) throw new Error(t('No Vistr server answered at {s}.', { s: url }));
         S.server = url; saved('vistr.serverOverride', url);
         boot();
       });
@@ -542,7 +599,7 @@
     if (last) fi.code.value = last;
     fi.onsubmit = e => {
       e.preventDefault();
-      guard(async () => { signedIn(await api('POST', '/api/auth/id', { code: fi.code.value.trim() })); showHome(); toast(`You're online as Player ${S.player.code}.`); });
+      guard(async () => { signedIn(await api('POST', '/api/auth/id', { code: fi.code.value.trim() })); showHome(); toast(t("You're online as Player {p}.", { p: S.player.code })); });
     };
     fe.onsubmit = e => {
       e.preventDefault();
@@ -550,7 +607,7 @@
         const r = await api('POST', '/api/auth/register', { email: fe.email.value.trim() });
         signedIn(r);
         if (r.isNew) showWelcome(true);            // new player: show their new ID
-        else { showHome(); toast(`Welcome back, Player ${r.player.code}. You're online.`); }
+        else { showHome(); toast(t("Welcome back, Player {p}. You're online.", { p: r.player.code })); }
       });
     };
     app.onclick = e => { if (e.target.closest('[data-action]')?.dataset.action === 'standalone') goStandalone(); };
@@ -558,7 +615,7 @@
 
   function showWelcome(isNew) {
     mount('welcome', 'welcome');
-    $('[data-welcome]').textContent = isNew ? 'Welcome. Your Player ID is' : 'Welcome back. Your Player ID is';
+    $('[data-welcome]').textContent = t(isNew ? 'Welcome. Your Player ID is' : 'Welcome back. Your Player ID is');
     if (isNew) setTimeout(() => { const el = $('.big-id'); if (el) confetti(el); }, 150);
     app.onclick = e => { if (e.target.closest('[data-action]')?.dataset.action === 'continue') showHome(); };
   }
@@ -568,7 +625,7 @@
     const pickIntensity = name => {
       S.intensity = name; saved('vistr.intensity', name);
       $$('[data-intensity]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.intensity === name)));
-      $('[data-intensity-about]').textContent = E.INTENSITY[name].about;
+      $('[data-intensity-about]').textContent = t(E.INTENSITY[name].about);
       loadBoards($('[data-boards]'), S.level);
       renderPlayers();
     };
@@ -581,9 +638,10 @@
     $$('.level').forEach(b => { b.onclick = () => { pick(Number(b.dataset.level)); renderPlayers(); }; });
     pick(S.level);
     pickIntensity(S.intensity);
+    Plays.show();
 
     const live = S.mode === 'live';
-    const goOffline = () => { goStandalone(); toast("You're offline. Solo games only."); };
+    const goOffline = () => { goStandalone(); toast(t("You're offline. Solo games only.")); };
     const f = $('[data-form=request]');
     f.onsubmit = e => { e.preventDefault(); sendRequest(f.code.value); };
 
@@ -603,7 +661,7 @@
     renderPlayers();
     if (!live) return;
     S.clockTimer = setInterval(renderClocks, 1000);
-    api('GET', '/api/players').then(r => {
+    api('GET', `/api/players?lang=${S.lang}`).then(r => {
       S.players = r.players; S.playersSkew = r.serverNow - Date.now();
       S.outgoing = r.outgoing;
       if (r.incoming && !$('#request-dialog').open) showRequest(r.incoming);
@@ -617,38 +675,39 @@
     if (S.mode !== 'live') {
       return;
     }
-    $('[data-avail-hint]').textContent = "Others can see you and send you a request, even while you play solo. To hide, tap ONLINE at the top.";
+    $('[data-avail-hint]').textContent = t('Others can see you and send you a request, even while you play solo. To hide, tap ONLINE at the top.');
     const out = $('[data-outgoing]');
     out.hidden = !S.outgoing;
-    if (S.outgoing) $('[data-outgoing-text]').textContent = `Request sent to Player ${S.outgoing.to} for ${S.outgoing.level} letters, ${ilabel(S.outgoing.intensity)}. Waiting for them…`;
+    if (S.outgoing) $('[data-outgoing-text]').textContent = t('Request sent to Player {p} for {n} letters, {i}. Waiting for them…', { p: S.outgoing.to, n: S.outgoing.level, i: ilabel(S.outgoing.intensity) }) + langNote(S.outgoing.lang);
     const others = (S.players || []).filter(p => p.playerCode !== S.player?.code);
     ul.innerHTML = others.length ? others.map(p => `
       <li data-player="${esc(p.playerCode)}">
-        <span class="who"><span class="pid">Player ${esc(p.playerCode)}</span>
+        <span class="who"><span class="pid">${t('Player {p}', { p: esc(p.playerCode) })}${p.lang && p.lang !== S.lang ? ` <small class="lang-tag">${esc(E.LANGS[p.lang]?.name || p.lang)}</small>` : ''}</span>
           <span class="status ${p.status === 'free' && !p.requested ? 'on' : ''}" ${p.status === 'solo' ? `data-ends="${p.endsAt}" data-lvl="${p.level}" data-int="${esc(ilabel(p.intensity))}"` : ''}>${statusText(p)}</span></span>
         ${p.requested || (S.outgoing && S.outgoing.to === p.playerCode) ? '' :
-          `<button class="btn" type="button" data-action="request" data-code="${esc(p.playerCode)}">Request</button>`}
+          `<button class="btn" type="button" data-action="request" data-code="${esc(p.playerCode)}">${t('Request')}</button>`}
       </li>`).join('')
-      : '<li class="empty">Nobody else is available right now. Play solo meanwhile; a request can reach you mid-game.</li>';
-    $$('[data-action=request]', ul).forEach(b => { b.textContent = `Play ${S.level} letters`; b.title = `${S.level} letters, ${ilabel(S.intensity)}`; });
+      : `<li class="empty">${t('Nobody else is available right now. Play solo meanwhile; a request can reach you mid-game.')}</li>`;
+    $$('[data-action=request]', ul).forEach(b => { b.textContent = t('Play {n} letters', { n: S.level }); b.title = t('{n} letters, {i}', { n: S.level, i: ilabel(S.intensity) }); });
   }
-  const ilabel = name => E.INTENSITY[name]?.label || 'Intermediate';
+  const ilabel = name => t(E.INTENSITY[name]?.label || 'Intermediate');
+  const langNote = l => (l && l !== S.lang ? ` (${E.LANGS[l]?.name || l})` : '');
   function statusText(p) {
-    if (p.requested) return 'Answering a request';
-    if (p.status === 'solo') return `Playing solo, ${p.level} letters, ${ilabel(p.intensity)}, ${timeLeft(p.endsAt)} left`;
-    return 'Ready to play';
+    if (p.requested) return t('Answering a request');
+    if (p.status === 'solo') return t('Playing solo, {n} letters, {i}, {t} left', { n: p.level, i: ilabel(p.intensity), t: timeLeft(p.endsAt) });
+    return t('Ready to play');
   }
   function timeLeft(endsAt) {
     const s = Math.max(0, Math.ceil((endsAt - (Date.now() + (S.playersSkew || 0))) / 1000));
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
   function renderClocks() {
-    $$('[data-ends]').forEach(el => { el.textContent = `Playing solo, ${el.dataset.lvl} letters, ${el.dataset.int}, ${timeLeft(Number(el.dataset.ends))} left`; });
+    $$('[data-ends]').forEach(el => { el.textContent = t('Playing solo, {n} letters, {i}, {t} left', { n: el.dataset.lvl, i: el.dataset.int, t: timeLeft(Number(el.dataset.ends)) }); });
   }
   function sendRequest(code) {
     guard(async () => {
-      const r = await api('POST', '/api/request', { playerCode: code, level: S.level, intensity: S.intensity });
-      S.outgoing = { to: r.to, level: r.level, intensity: r.intensity };
+      const r = await api('POST', '/api/request', { playerCode: code, level: S.level, intensity: S.intensity, lang: S.lang });
+      S.outgoing = { to: r.to, level: r.level, intensity: r.intensity, lang: r.lang };
       const f = $('[data-form=request]'); if (f) f.reset();
       renderPlayers();
     });
@@ -656,13 +715,14 @@
 
   function showRequest(d) {
     const dlg = $('#request-dialog');
-    $('[data-from]', dlg).textContent = `Player ${d.from}`;
+    translateDom(dlg);
+    $('[data-from]', dlg).textContent = t('Player {p}', { p: d.from });
     $('[data-level]', dlg).textContent = d.level;
-    $('[data-req-intensity]', dlg).textContent = ilabel(d.intensity);
+    $('[data-req-intensity]', dlg).textContent = ilabel(d.intensity) + langNote(d.lang);
     const note = $('[data-solo-note]', dlg);
     const inSolo = d.inSolo || (S.screen === 'game' && S.match?.mode === 'single');
     note.hidden = !inSolo;
-    if (inSolo) note.textContent = `Playing them ends your solo game. Your ${d.soloScore ?? 'current'} points are saved.`;
+    if (inSolo) note.textContent = d.soloScore != null ? t('Playing them ends your solo game. Your {n} points are saved.', { n: d.soloScore }) : t('Playing them ends your solo game. Your points so far are saved.');
     let left = d.expiresIn || 120;
     $('[data-left]', dlg).textContent = left;
     clearInterval(S.inviteTimer);
@@ -689,15 +749,15 @@
     const iAsked = d.from === S.player?.code;
     if (iAsked) {
       S.outgoing = null;
-      const msg = { declined: `Player ${d.to} said no this time.`, expired: `Player ${d.to} didn't answer in time.`,
-        left: `Player ${d.to} went offline.`, cancelled: '' }[d.reason];
+      const msg = { declined: t('Player {p} said no this time.', { p: d.to }), expired: t("Player {p} didn't answer in time.", { p: d.to }),
+        left: t('Player {p} went offline.', { p: d.to }), cancelled: '' }[d.reason];
       if (msg) toast(msg);
       if (S.screen === 'home') renderPlayers();
     } else {
       const dlg = $('#request-dialog');
       if (dlg.open && d.reason !== 'accepted') {
         dlg.returnValue = 'gone'; dlg.close();
-        toast(d.reason === 'cancelled' ? `Player ${d.from} cancelled the request.` : 'That request closed.');
+        toast(d.reason === 'cancelled' ? t('Player {p} cancelled the request.', { p: d.from }) : t('That request closed.'));
       }
     }
   }
@@ -712,14 +772,14 @@
   async function loadBoards(el, level, mineHighlight) {
     el.innerHTML = '';
     if (S.mode !== 'live') {
-      el.innerHTML = boardHtml(`Your top 10, ${level} letters, ${ilabel(S.intensity)}`, Local.topTen(level, S.intensity).map(t => ({ name: fmtDate(t.finishedAt), score: t.score })),
-        'Your best games on this device will show here.');
+      el.innerHTML = boardHtml(t('Your top 10, {n} letters, {i}', { n: level, i: ilabel(S.intensity) }), Local.topTen(level, S.intensity, S.lang).map(x => ({ name: fmtDate(x.finishedAt), score: x.score })),
+        t('Your best games on this device will show here.'));
       return;
     }
     try {
-      const r = await api('GET', `/api/scores?level=${level}&intensity=${S.intensity}`);
-      el.innerHTML = boardHtml(`Your top 10, ${level} letters, ${ilabel(S.intensity)}`, r.topTen.map(t => ({ name: fmtDate(t.finishedAt), score: t.score, mine: t.finishedAt === mineHighlight })), 'Your best games will show here.')
-        + boardHtml(`All-time, ${level} letters, ${ilabel(S.intensity)}`, r.board.map(b => ({ name: `Player ${b.playerCode}`, score: b.score, mine: b.playerCode === S.player?.code })), 'No games yet at this level.');
+      const r = await api('GET', `/api/scores?level=${level}&intensity=${S.intensity}&lang=${S.lang}`);
+      el.innerHTML = boardHtml(t('Your top 10, {n} letters, {i}', { n: level, i: ilabel(S.intensity) }), r.topTen.map(x => ({ name: fmtDate(x.finishedAt), score: x.score, mine: x.finishedAt === mineHighlight })), t('Your best games will show here.'))
+        + boardHtml(t('All-time, {n} letters, {i}', { n: level, i: ilabel(S.intensity) }), r.board.map(b => ({ name: t('Player {p}', { p: b.playerCode }), score: b.score, mine: b.playerCode === S.player?.code })), t('No games yet at this level.'));
     } catch (e) { el.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
   }
   function boardHtml(title, rows, empty) {
@@ -727,7 +787,7 @@
       ? `<ol>${rows.map(r => `<li class="${r.mine ? 'mine' : ''}"><span>${esc(r.name)}</span><b>${r.score}</b></li>`).join('')}</ol>`
       : `<p class="empty">${esc(empty)}</p>`}</section>`;
   }
-  const fmtDate = t => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const fmtDate = d => new Date(d).toLocaleDateString(S.lang, { month: 'short', day: 'numeric' }) + ', ' + new Date(d).toLocaleTimeString(S.lang, { hour: 'numeric', minute: '2-digit' });
 
   function showReady() {
     const m = S.match;
@@ -744,28 +804,28 @@
       };
     }
     $('[data-level]', app).textContent = m.level;
-    $('[data-title]').textContent = m.mode === 'duo' ? `Both players tap Start` : `Solo, ${m.level} letters, ${ilabel(m.intensity)}`;
+    $('[data-title]').textContent = m.mode === 'duo' ? t('Both players tap Start') : t('Solo, {n} letters, {i}', { n: m.level, i: ilabel(m.intensity) });
     const me = m.players.find(p => p.me);
     $('[data-players]').innerHTML = m.players.map(p => `
-      <li><span class="pid">${p.me ? 'You' : 'Player ' + esc(p.playerCode)}</span>
-      <span class="status ${p.ready ? 'on' : ''}">${!p.online && !p.me ? 'Offline' : p.ready ? 'Ready' : 'Not ready'}</span></li>`).join('');
+      <li><span class="pid">${p.me ? t('You') : t('Player {p}', { p: esc(p.playerCode) })}</span>
+      <span class="status ${p.ready ? 'on' : ''}">${t(!p.online && !p.me ? 'Offline' : p.ready ? 'Ready' : 'Not ready')}</span></li>`).join('');
     const btn = $('[data-action=ready]');
     btn.disabled = me.ready;
-    btn.textContent = me.ready ? 'Waiting for the other player' : 'Start';
+    btn.textContent = t(me.ready ? 'Waiting for the other player' : 'Start');
     const R = m.rules || {};
     const mins = Math.round((R.round || 300) / 60);
     $('[data-hint]').textContent = m.mode === 'duo'
-      ? `You take turns on one shared word for ${mins} minutes: change one letter, then it's the other player's go. ${m.turnSeconds || 30} seconds per turn.`
-      : `You have ${mins} minutes. Here's how to score:`;
+      ? t("You take turns on one shared word for {m} minutes: change one letter, then it's the other player's go. {s} seconds per turn.", { m: mins, s: m.turnSeconds || 30 })
+      : t("You have {m} minutes. Here's how to score:", { m: mins });
     const hot = Object.entries(R.hotLetters || {}).reduce((g, [l, pts]) => ((g[pts] = g[pts] || []).push(l.toUpperCase()), g), {});
     $('[data-rules]').innerHTML = [
-      `<li>Every real word <b>${pts(R.word ?? 1)}</b></li>`,
-      `<li>Not a word <b>${R.miss === 0 ? 'no penalty' : pts(R.miss ?? -1)}</b></li>`,
-      ...Object.entries(hot).sort((a, b) => b[0] - a[0]).map(([pts, ls]) => `<li>Roll in ${ls.join(' ')} <b>+${pts} extra</b></li>`),
-      `<li>${R.streakFrom ?? 3}+ in a row <b>+1 extra each</b></li>`,
-      `<li class="jp">Hidden jackpot words <b>+${R.jackpot ?? 10}</b></li>`,
-      `<li>Hint (which letter to roll) <b>${R.hints < 0 ? 'unlimited' : R.hints === 0 ? 'none' : R.hints + ' per round'}</b></li>`,
-      `<li>Next word, when stuck <b>${(R.maxSkips ?? 5) - 1} free, ${R.maxSkips ?? 5}th ends round</b></li>`,
+      `<li>${t('Every real word')} <b>${pts(R.word ?? 1)}</b></li>`,
+      `<li>${t('Not a word')} <b>${R.miss === 0 ? t('no penalty') : pts(R.miss ?? -1)}</b></li>`,
+      ...Object.entries(hot).sort((a, b) => b[0] - a[0]).map(([n, ls]) => `<li>${t('Roll in {l}', { l: ls.join(' ') })} <b>${t('+{n} extra', { n })}</b></li>`),
+      `<li>${t('{n}+ in a row', { n: R.streakFrom ?? 3 })} <b>${t('+1 extra each')}</b></li>`,
+      `<li class="jp">${t('Hidden jackpot words')} <b>+${R.jackpot ?? 10}</b></li>`,
+      `<li>${t('Hint (which letter to roll)')} <b>${R.hints < 0 ? t('unlimited') : R.hints === 0 ? t('none') : t('{n} per round', { n: R.hints })}</b></li>`,
+      `<li>${t('Next word, when stuck')} <b>${t('{n} free, the next ends the round', { n: (R.maxSkips ?? 5) - 1 })}</b></li>`,
     ].join('');
   }
 
@@ -783,9 +843,9 @@
     $('[data-drums]').style.setProperty('--n', m.startWord.length);
     renderDrums(); renderChain(); renderOpponent(); renderJackpots(); renderStreak(); renderSkips(); renderHints(); renderTurn(); tickClock();
     S.clockTimer = setInterval(tickClock, 250);
-    say(m.mode !== 'duo' ? 'Roll one letter to make a new word.'
-      : S.game.myTurn ? 'You go first. Roll one letter to make a new word.'
-      : `Player ${m.turnCode} goes first. Your drums unlock on your turn.`, 'info');
+    say(m.mode !== 'duo' ? t('Roll one letter to make a new word.')
+      : S.game.myTurn ? t('You go first. Roll one letter to make a new word.')
+      : t('Player {p} goes first. Your drums unlock on your turn.', { p: m.turnCode }), 'info');
     app.onclick = e => {
       const btn = e.target.closest('[data-action]'); if (!btn) return;
       const a = btn.dataset.action;
@@ -794,7 +854,7 @@
       if (a === 'hint') useHint();
       if (a === 'reset') resetDraft();
       if (a === 'roll') roll(Number(btn.dataset.slot), Number(btn.dataset.dir));
-      if (a === 'quit' && confirm('End this round now? Your score so far is saved.')) {
+      if (a === 'quit' && confirm(t('End this round now? Your score so far is saved.'))) {
         if (S.match.local) Local.finish(S.match, 'ended'); else api('POST', '/api/match/quit').catch(() => {});
       }
     };
@@ -822,7 +882,7 @@
     box.hidden = !g.duo;
     if (!g.duo) return;
     box.classList.toggle('mine', g.myTurn);
-    $('[data-turn-who]').textContent = g.myTurn ? 'Your turn' : `Player ${g.turnCode}'s turn`;
+    $('[data-turn-who]').textContent = g.myTurn ? t('Your turn') : t("Player {p}'s turn", { p: g.turnCode });
   }
   // The server says whose turn it is now, and what the last move was.
   function onBoard(d) {
@@ -839,15 +899,15 @@
     if (d.jackpotsTotal !== undefined) { const bump = d.jackpotsFound !== g.jackpots.found; g.jackpots = { found: d.jackpotsFound, total: d.jackpotsTotal }; renderJackpots(bump); }
     if (theirs) {
       const W = (last.word || '').toUpperCase();
-      const msg = last.outcome === 'valid' ? `Player ${last.by} made ${W}${last.points ? ` (+${last.points})` : ''}.`
-        : last.outcome === 'invalid' ? `Player ${last.by} tried ${W}: not a word.`
-        : last.outcome === 'skip' ? `Player ${last.by} took a new word.`
-        : last.outcome === 'timeout' ? `Player ${last.by} ran out of time.` : '';
-      say(`${msg} Your turn!`.trim(), 'good');
+      const msg = last.outcome === 'valid' ? t('Player {p} made {w} (+{n}).', { p: last.by, w: W, n: last.points || 0 })
+        : last.outcome === 'invalid' ? t('Player {p} tried {w}: not a word.', { p: last.by, w: W })
+        : last.outcome === 'skip' ? t('Player {p} took a new word.', { p: last.by })
+        : last.outcome === 'timeout' ? t('Player {p} ran out of time.', { p: last.by }) : '';
+      say(`${msg} ${t('Your turn!')}`.trim(), 'good');
       renderParts([]); $('[data-drums]')?.classList.remove('good', 'bad');
       if (navigator.vibrate) navigator.vibrate(60);
     } else if (last.outcome === 'timeout' && was) {
-      say(`Time's up for that turn. Player ${g.turnCode}'s go.`, 'bad');
+      say(t("Time's up for that turn. Player {p}'s go.", { p: g.turnCode }), 'bad');
     }
     if (S.screen === 'game') { renderDrums(); renderChain(); renderHints(); renderSkips(); renderTurn(); }
   }
@@ -855,8 +915,8 @@
   function renderDrums(animSlot = null, dir = 0) {
     const g = S.game, wrap = $('[data-drums]');
     wrap.innerHTML = g.draft.map((ch, i) => {
-      const k = A_Z.indexOf(ch);
-      const at = d => A_Z[(k + d + 26) % 26];
+      const AB = abc(), n = AB.length, k = AB.indexOf(ch);
+      const at = d => AB[(k + d + n * 2) % n];
       const held = g.changed !== null && g.changed !== i;  // one letter per move: the others are locked
       const cls = ['drum', g.changed === i ? 'changed' : '', held ? 'held' : '', g.focus === i ? 'focus' : '', g.hintSlot === i ? 'hinted' : ''].join(' ');
       return `<div class="${cls}" data-slot="${i}">
@@ -886,11 +946,11 @@
 
   function roll(slot, dir) {
     const g = S.game; if (!g) return;
-    if (g.duo && !g.myTurn) { say(`Wait for your turn. It's Player ${g.turnCode}'s go.`, 'info'); return; }
+    if (g.duo && !g.myTurn) { say(t("Wait for your turn. It's Player {p}'s go.", { p: g.turnCode }), 'info'); return; }
     if (g.locked) return;
     if (!oneLetter(slot)) return;
-    const k = A_Z.indexOf(g.draft[slot]);
-    g.draft[slot] = A_Z[(k + dir + 26) % 26];
+    const AB = abc(), k = AB.indexOf(g.draft[slot]);
+    g.draft[slot] = AB[(k + dir + AB.length * 2) % AB.length];
     g.changed = g.draft[slot] === g.current[slot] ? null : slot;
     g.focus = slot;
     g.hintSlot = null;
@@ -904,7 +964,7 @@
   function oneLetter(slot) {
     const g = S.game;
     if (g.changed === null || g.changed === slot) return true;
-    say(`One letter per move. Roll letter ${g.changed + 1} back, or tap Undo.`, 'bad');
+    say(t('One letter per move. Roll letter {n} back, or tap Undo.', { n: g.changed + 1 }), 'bad');
     const d = $(`.drum[data-slot="${g.changed}"]`); if (d) replay(d, 'nag');
     if (navigator.vibrate) navigator.vibrate(30);
     return false;
@@ -918,7 +978,7 @@
   async function processWord() {
     const g = S.game; if (blocked(g) || g.changed === null) return;
     g.locked = true; g.hintSlot = null; renderDrums();
-    say('Checking…', 'info');
+    say(t('Checking…'), 'info');
     const word = g.draft.join('');
     try {
       const r = S.match.local ? Local.submit(S.match, word) : await api('POST', '/api/match/submit', { word, seq: ++g.seq });
@@ -931,7 +991,7 @@
       scoreEl.textContent = r.score;
       const mine = S.match.players.find(p => p.me); if (mine) mine.score = r.score;
       const passes = g.duo && (r.outcome === 'valid' || r.outcome === 'invalid');
-      say(r.message + (passes ? `. Player ${S.match.players.find(p => !p.me)?.playerCode}'s turn.` : ''), r.outcome === 'valid' ? 'good' : r.outcome === 'invalid' ? 'bad' : 'info');
+      say(r.message + (passes ? '. ' + t("Player {p}'s turn.", { p: S.match.players.find(p => !p.me)?.playerCode }) : ''), r.outcome === 'valid' ? 'good' : r.outcome === 'invalid' ? 'bad' : 'info');
       renderParts(r.parts);
       const drums = $('[data-drums]');
       drums.classList.remove('good', 'bad');
@@ -966,7 +1026,7 @@
     const btn = $('[data-action=hint]'); if (!btn || !S.game) return;
     const left = S.game.hintsLeft;
     btn.hidden = left === 0 && (S.match?.rules?.hints === 0);
-    $('[data-hints-left]').textContent = left < 0 ? '' : `${left} left`;
+    $('[data-hints-left]').textContent = left < 0 ? '' : t('{n} left', { n: left });
     btn.disabled = left === 0 || blocked(S.game);
   }
   async function useHint() {
@@ -986,13 +1046,13 @@
     const btn = $('[data-action=skip]'); if (!btn || !S.game) return;
     const left = S.game.skipsLeft;
     const free = Math.max(0, left - 1);
-    $('[data-skips-left]').textContent = left <= 1 ? 'ends the round' : `${free} free`;
+    $('[data-skips-left]').textContent = left <= 1 ? t('ends the round') : t('{n} free', { n: free });
     btn.classList.toggle('last', left <= 1);
     btn.disabled = left <= 0 || blocked(S.game);
   }
   async function skipWord() {
     const g = S.game; if (blocked(g) || g.skipsLeft <= 0) return;
-    if (g.skipsLeft <= 1 && !confirm('This is your last skip. Using it ends the round now. Go ahead?')) return;
+    if (g.skipsLeft <= 1 && !confirm(t('This is your last skip. Using it ends the round now. Go ahead?'))) return;
     g.locked = true; renderDrums(); renderSkips();
     try {
       const r = S.match.local ? Local.skip(S.match) : await api('POST', '/api/match/skip');
@@ -1028,8 +1088,8 @@
     const el = $('[data-jackpots]'); if (!el || !S.game) return;
     const { found, total } = S.game.jackpots;
     el.hidden = !total;
-    el.textContent = found >= total && total ? `★ All ${total} jackpots!` : `★ Jackpots ${found}/${total}`;
-    el.title = `Hidden jackpot words found: ${found} of ${total}`;
+    el.textContent = found >= total && total ? t('★ All {n} jackpots!', { n: total }) : t('★ Jackpots {f}/{n}', { f: found, n: total });
+    el.title = t('Hidden jackpot words found: {f} of {n}', { f: found, n: total });
     if (bump) replay(el, 'bump');
   }
 
@@ -1087,7 +1147,7 @@
     const el = $('[data-streak]'); if (!el || !S.game) return;
     const n = S.game.streak;
     el.hidden = n < 2;
-    if (n >= 2) { el.textContent = `🔥 ${n} in a row`; el.title = n >= 5 ? 'Unstoppable!' : ''; replay(el, 'bump'); }
+    if (n >= 2) { el.textContent = t('🔥 {n} in a row', { n }); el.title = n >= 5 ? t('Unstoppable!') : ''; replay(el, 'bump'); }
   }
   const CANDY = ['#ff8b3d', '#ff5fa8', '#45c8f5', '#a8e44a', '#ffd23f', '#fff7ec'];
   function confetti(host) {
@@ -1123,7 +1183,7 @@
     const box = $('[data-opp]'); if (!box) return;
     box.hidden = !opp;
     if (opp) {
-      $('[data-oppcode]').textContent = `Player ${opp.playerCode}` + (opp.online === false ? ' (offline)' : '');
+      $('[data-oppcode]').textContent = t('Player {p}', { p: opp.playerCode }) + (opp.online === false ? ` (${t('offline')})` : '');
       const os = $('[data-oppscore]');
       if (os.textContent !== String(opp.score)) { if (os.textContent !== '') replay(os, 'pop'); os.textContent = opp.score; }
     }
@@ -1166,13 +1226,14 @@
       Enter: () => processWord(),
       Escape: () => resetDraft(),
     };
-    if (/^[a-z]$/i.test(e.key) && !e.ctrlKey && !e.metaKey) {
+    if (/^\p{L}$/u.test(e.key) && !e.ctrlKey && !e.metaKey) {
       // Typing a letter sets the focused drum directly.
       e.preventDefault();
-      if (blocked(g)) { if (g.duo && !g.myTurn) say(`Wait for your turn. It's Player ${g.turnCode}'s go.`, 'info'); return; }
+      if (blocked(g)) { if (g.duo && !g.myTurn) say(t("Wait for your turn. It's Player {p}'s go.", { p: g.turnCode }), 'info'); return; }
       const want = e.key.toLowerCase();
       const cur = g.draft[g.focus];
-      const dir = (A_Z.indexOf(want) - A_Z.indexOf(cur) + 26) % 26;
+      if (!abc().includes(want)) return;
+      const dir = (abc().indexOf(want) - abc().indexOf(cur) + abc().length) % abc().length;
       if (dir && oneLetter(g.focus)) { g.draft[g.focus] = want; g.changed = want === g.current[g.focus] ? null : g.focus; renderDrums(g.focus, 1); }
       return;
     }
@@ -1185,21 +1246,21 @@
     S.match = null; S.game = null;
     mount('results', 'results');
     const me = m.players.find(p => p.me), opp = m.players.find(p => !p.me);
-    const title = !opp ? `You scored ${me.score}`
-      : me.score > opp.score ? `You won, ${me.score} to ${opp.score}`
-      : me.score < opp.score ? `Player ${opp.playerCode} won, ${opp.score} to ${me.score}`
-      : `A draw at ${me.score}`;
-    const why = d.reason === 'opponent-left' ? ' The other player disconnected.'
-      : d.reason === 'skips' ? (opp ? ` ${d.endedBy === S.player?.code ? 'You' : 'Player ' + d.endedBy} used the last skip.` : ' You used your last skip.')
-      : d.reason === 'ended' && opp ? (d.endedBy === S.player?.code ? ' You ended the round.' : ` Player ${d.endedBy} ended the round.`) : '';
-    $('[data-title]').textContent = title + (why ? '.' + why : '');
+    const title = !opp ? t('You scored {n}', { n: me.score })
+      : me.score > opp.score ? t('You won, {a} to {b}', { a: me.score, b: opp.score })
+      : me.score < opp.score ? t('Player {p} won, {a} to {b}', { p: opp.playerCode, a: opp.score, b: me.score })
+      : t('A draw at {n}', { n: me.score });
+    const why = d.reason === 'opponent-left' ? t('The other player disconnected.')
+      : d.reason === 'skips' ? (opp && d.endedBy !== S.player?.code ? t('Player {p} used the last skip.', { p: d.endedBy }) : t('You used your last skip.'))
+      : d.reason === 'ended' && opp ? (d.endedBy === S.player?.code ? t('You ended the round.') : t('Player {p} ended the round.', { p: d.endedBy })) : '';
+    $('[data-title]').textContent = title + (why ? '. ' + why : '');
     const mine = d.topTen.find(t => t.finishedAt && Math.abs(t.finishedAt - Date.now()) < 10_000);
     $('[data-final]').innerHTML = `
-      <div class="row ${opp && me.score > opp.score ? 'win' : ''}"><span>You</span><b>${me.score}</b></div>
-      ${opp ? `<div class="row ${opp.score > me.score ? 'win' : ''}"><span>Player ${esc(opp.playerCode)}</span><b>${opp.score}</b></div>` : ''}
+      <div class="row ${opp && me.score > opp.score ? 'win' : ''}"><span>${t('You')}</span><b>${me.score}</b></div>
+      ${opp ? `<div class="row ${opp.score > me.score ? 'win' : ''}"><span>${t('Player {p}', { p: esc(opp.playerCode) })}</span><b>${opp.score}</b></div>` : ''}
       ${mine?.chain?.length > 1 ? `<p class="words">${mine.chain.map(esc).join(' › ')}</p>` : ''}`;
-    $('[data-boards]').innerHTML = boardHtml(`Your top 10, ${m.level} letters, ${ilabel(m.intensity)}`, d.topTen.map(t => ({ name: fmtDate(t.finishedAt), score: t.score, mine: t === mine })), 'No games saved yet.')
-      + (d.local ? '' : boardHtml(`All-time, ${m.level} letters, ${ilabel(m.intensity)}`, d.board.map(b => ({ name: `Player ${b.playerCode}`, score: b.score, mine: b.playerCode === S.player?.code })), 'No games yet.'));
+    $('[data-boards]').innerHTML = boardHtml(t('Your top 10, {n} letters, {i}', { n: m.level, i: ilabel(m.intensity) }), d.topTen.map(x => ({ name: fmtDate(x.finishedAt), score: x.score, mine: x === mine })), t('No games saved yet.'))
+      + (d.local ? '' : boardHtml(t('All-time, {n} letters, {i}', { n: m.level, i: ilabel(m.intensity) }), d.board.map(b => ({ name: t('Player {p}', { p: b.playerCode }), score: b.score, mine: b.playerCode === S.player?.code })), t('No games yet.')));
     app.onclick = e => {
       const a = e.target.closest('[data-action]')?.dataset.action;
       if (a === 'home') showHome();
@@ -1215,7 +1276,7 @@
   async function sessionEnded() { // the server no longer knows this sign-in: try the ID, else ask
     S.token = null; S.player = null; saved('vistr.token', null);
     S.events?.close(); S.events = null;
-    if (await signInWithKnownId()) { showHome(); toast(`You're online as Player ${S.player.code}.`); }
+    if (await signInWithKnownId()) { showHome(); toast(t("You're online as Player {p}.", { p: S.player.code })); }
     else showSignIn();
   }
 
@@ -1225,8 +1286,48 @@
     S.mode = 'standalone';
     S.events?.close(); S.events = null;
     showHome();
-    toast(why || "Can't reach the game server, so you're offline. Tap Go online when you're connected.");
+    toast(why || t("Can't reach the game server, so you're offline. Tap Go online when you're connected."));
   }
+
+  // ───────────────────────── games played ─────────────────────────
+  // The server counts online games itself. Offline games are counted on the phone and
+  // reported the next time the server can be reached.
+  const Plays = {
+    pending() { return Number(saved('vistr.unsentPlays')) || 0; },
+    add() { saved('vistr.unsentPlays', String(this.pending() + 1)); this.flush(); },
+    sending: false,
+    async flush() {
+      const n = this.pending();
+      if (!n || this.sending || !S.server && location.protocol === 'file:') return;
+      this.sending = true;
+      try {
+        const r = await fetch(S.server.replace(/\/$/, '') + '/api/played', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ count: Math.min(n, 200) }), signal: timeoutSignal(8000),
+        });
+        if (r.ok) {
+          saved('vistr.unsentPlays', String(Math.max(0, this.pending() - Math.min(n, 200))));
+          const d = await r.json().catch(() => null);
+          if (d?.total) saved('vistr.playsTotal', String(d.total));
+        }
+      } catch (_) {} finally { this.sending = false; }
+    },
+    async show() {
+      const el = $('[data-plays]'); if (!el) return;
+      const draw = (total, today) => {
+        if (!total) return;
+        el.hidden = false;
+        const b = n => `<b>${Number(n).toLocaleString(S.lang)}</b>`;
+        el.innerHTML = t(Number(total) === 1 ? '{n} game played' : '{n} games played', { n: b(total) }) + (today ? ' · ' + t('{n} today', { n: b(today) }) : '');
+      };
+      draw(Number(saved('vistr.playsTotal')) + this.pending());          // last known, straight away
+      await this.flush();
+      try {
+        const r = await fetch(S.server.replace(/\/$/, '') + '/api/stats', { signal: timeoutSignal(6000) });
+        const d = await r.json();
+        if (r.ok && $('[data-plays]') === el) { saved('vistr.playsTotal', String(d.total)); draw(d.total + this.pending(), d.today); }
+      } catch (_) {}
+    },
+  };
 
   // ───────────────────────── contact form ─────────────────────────
   // The form comes from contact.html; your email address is never in the app.
@@ -1239,17 +1340,17 @@
         const status = $('[data-status]', f), btn = $('.send', f);
         const data = Object.fromEntries(new FormData(f));
         data.app = `${isNative ? 'Android app' : 'web app'}${S.player ? `, player ${S.player.code}` : ''}`;
-        status.textContent = 'Sending…'; status.className = 'form-status'; btn.disabled = true;
+        status.textContent = t('Sending…'); status.className = 'form-status'; btn.disabled = true;
         try {
           const r = await fetch(S.server.replace(/\/$/, '') + '/api/contact', {
             method: 'POST', signal: timeoutSignal(15000),
             headers: { 'Content-Type': 'application/json', ...(S.token ? { Authorization: `Bearer ${S.token}` } : {}) },
             body: JSON.stringify(data),
-          }).catch(() => { throw new Error("Can't reach the game server. Check your internet connection and try again."); });
+          }).catch(() => { throw new Error(t("Can't reach the game server. Check your internet connection and try again.")); });
           const out = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(out.error || 'Could not send. Try again.');
+          if (!r.ok) throw new Error(out.error ? tr(out.error) : t('Could not send. Try again.'));
           f.message.value = '';
-          status.textContent = "Thanks! Your message is on its way. We'll reply by email."; status.className = 'form-status ok';
+          status.textContent = t("Thanks! Your message is on its way. We'll reply by email."); status.className = 'form-status ok';
         } catch (err) { status.textContent = err.message; status.className = 'form-status bad'; }
         btn.disabled = false;
       });
@@ -1268,7 +1369,7 @@
         });
         d = await r.json(); if (!r.ok) throw new Error();
       } catch (_) {
-        body.innerHTML = "<p>Reviews need the game server, and it can't be reached right now. Check your internet connection and try again.</p>";
+        body.innerHTML = `<p>${t("Reviews need the game server, and it can't be reached right now. Check your internet connection and try again.")}</p>`;
         return;
       }
       const max = Math.max(1, ...d.counts);
@@ -1278,25 +1379,25 @@
       body.innerHTML = `
         <div class="rv-summary">
           <div><b>${d.count ? d.average.toFixed(1) : '–'}</b><span class="rv-stars">${this.stars(Math.round(d.average))}</span>
-          <span class="meta">${d.count} review${d.count === 1 ? '' : 's'}</span></div>
-          <ol class="rv-bars" aria-label="Ratings">${[5, 4, 3, 2, 1].map(n => `<li><span>${n}★</span><i><i style="width:${Math.round(d.counts[n - 1] / max * 100)}%"></i></i><small>${d.counts[n - 1]}</small></li>`).join('')}</ol>
+          <span class="meta">${t(d.count === 1 ? '1 review' : '{n} reviews', { n: d.count })}</span></div>
+          <ol class="rv-bars" aria-label="${t('Ratings')}">${[5, 4, 3, 2, 1].map(n => `<li><span>${n}★</span><i><i style="width:${Math.round(d.counts[n - 1] / max * 100)}%"></i></i><small>${d.counts[n - 1]}</small></li>`).join('')}</ol>
         </div>
         <section class="rv-write">
           ${canWrite ? `
-            <h2>${mine ? 'Your review' : 'Rate Vistr'}</h2>
-            ${mine?.status === 'held' ? '<p class="meta">Your review is waiting for approval.</p>' : ''}
+            <h2>${t(mine ? 'Your review' : 'Rate Vistr')}</h2>
+            ${mine?.status === 'held' ? `<p class="meta">${t('Your review is waiting for approval.')}</p>` : ''}
             <form data-review>
-              <div class="rv-pick" role="radiogroup" aria-label="Stars">${[1, 2, 3, 4, 5].map(n => `<button type="button" role="radio" data-star="${n}" aria-label="${n} star${n > 1 ? 's' : ''}">★</button>`).join('')}</div>
-              <textarea name="text" rows="3" maxlength="500" placeholder="What do you like? What could be better? (optional)">${esc(mine?.text || '')}</textarea>
+              <div class="rv-pick" role="radiogroup" aria-label="${t('Stars')}">${[1, 2, 3, 4, 5].map(n => `<button type="button" role="radio" data-star="${n}" aria-label="${t(n > 1 ? '{n} stars' : '1 star', { n })}">★</button>`).join('')}</div>
+              <textarea name="text" rows="3" maxlength="500" placeholder="${esc(t('What do you like? What could be better? (optional)'))}">${esc(mine?.text || '')}</textarea>
               <p class="form-status" data-status role="status"></p>
-              <button type="submit" class="btn primary">${mine ? 'Update my review' : 'Post review'}</button>
+              <button type="submit" class="btn primary">${t(mine ? 'Update my review' : 'Post review')}</button>
             </form>` : `
-            <p>Played Vistr? <b>Go online</b> to rate it and write a review.</p>
-            <button type="button" class="btn" data-go-review>Go online</button>`}
+            <p>${t('Played Vistr? Go online to rate it and write a review.')}</p>
+            <button type="button" class="btn" data-go-review>${t('Go online')}</button>`}
         </section>
-        <h2>What players say</h2>
-        <ul class="rv-list">${d.reviews.map(r => `<li><span class="rv-stars">${this.stars(r.stars)}</span> <b>Player ${esc(r.playerCode)}</b>
-          <small>${new Date(r.updatedAt).toLocaleDateString()}</small>${r.text ? `<p>${esc(r.text)}</p>` : ''}</li>`).join('') || '<li class="meta">No reviews yet. Be the first!</li>'}</ul>`;
+        <h2>${t('What players say')}</h2>
+        <ul class="rv-list">${d.reviews.map(r => `<li><span class="rv-stars">${this.stars(r.stars)}</span> <b>${t('Player {p}', { p: esc(r.playerCode) })}</b>
+          <small>${new Date(r.updatedAt).toLocaleDateString(S.lang)}</small>${r.text ? `<p>${esc(r.text)}</p>` : ''}</li>`).join('') || `<li class="meta">${t('No reviews yet. Be the first!')}</li>`}</ul>`;
       const pick = n => { this.picked = n; $$('[data-star]', body).forEach(b => { const on = Number(b.dataset.star) <= n; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(Number(b.dataset.star) === n)); }); };
       pick(this.picked);
       $('.rv-pick', body)?.addEventListener('click', e => { const b = e.target.closest('[data-star]'); if (b) pick(Number(b.dataset.star)); });
@@ -1304,10 +1405,10 @@
       $('form[data-review]', body)?.addEventListener('submit', async e => {
         e.preventDefault();
         const f = e.target, status = $('[data-status]', f);
-        if (!this.picked) { status.textContent = 'Tap the stars to rate first.'; status.className = 'form-status bad'; return; }
+        if (!this.picked) { status.textContent = t('Tap the stars to rate first.'); status.className = 'form-status bad'; return; }
         try {
           const r = await api('POST', '/api/reviews', { stars: this.picked, text: f.text.value });
-          toast(r.held ? 'Thanks! Your review will appear once it is approved.' : 'Thanks for your review!');
+          toast(t(r.held ? 'Thanks! Your review will appear once it is approved.' : 'Thanks for your review!'));
           this.render(body);
         } catch (err) { status.textContent = err.message; status.className = 'form-status bad'; }
       });
@@ -1321,31 +1422,37 @@
     titles: { about: 'About Vistr', 'how-to': 'How to play', privacy: 'Privacy & policies', terms: 'Terms & conditions', contact: 'Contact us', reviews: 'Reviews' },
     open() {
       const m = $('#menu');
+      renderLangPicker();
       $('[data-ad-privacy]', m).hidden = !NativeAds.privacyChoices;
       if (!m.open) m.showModal();
     },
     async page(name) {
       const r = $('#reader'), body = $('[data-reader-body]', r);
-      $('[data-reader-title]', r).textContent = this.titles[name] || '';
-      body.innerHTML = '<p class="hint">Loading…</p>';
+      $('[data-reader-title]', r).textContent = t(this.titles[name] || '');
+      body.innerHTML = `<p class="hint">${t('Loading…')}</p>`;
       if (!r.open) r.show();            // not modal: the top bar stays usable above it
       r.dataset.page = name;
       if (name === 'reviews') return Reviews.render(body);
       try {
-        const html = await fetch(`${name}.html`).then(x => { if (!x.ok) throw new Error(); return x.text(); });
+        // About and How to play exist in every language; the others are shared pages.
+        const own = (name === 'about' || name === 'how-to') && S.lang !== 'en' ? `${name}.${S.lang}.html` : null;
+        const get = f => fetch(f).then(x => { if (!x.ok) throw new Error(); return x.text(); });
+        const html = own ? await get(own).catch(() => get(`${name}.html`)) : await get(`${name}.html`);
         const main = new DOMParser().parseFromString(html, 'text/html').querySelector('main');
         main.querySelector('.page-nav')?.remove();
         main.querySelector('h1')?.remove();          // the reader shows the title in its header
         body.innerHTML = main.innerHTML;
+        translateDom(body);
+        if ((name === 'privacy' || name === 'terms') && S.lang !== 'en') body.insertAdjacentHTML('afterbegin', `<p class="note">${t('This page is in English, and the English version applies.')}</p>`);
         if (name === 'contact') Contact.bind(body);
       } catch (_) {
-        body.innerHTML = '<p>This page could not be opened. Check your connection and try again.</p>';
+        body.innerHTML = `<p>${t('This page could not be opened. Check your connection and try again.')}</p>`;
       }
       body.scrollTop = 0;
     },
     async adPrivacy() {
       try { await NativeAds.plugin()?.showPrivacyOptionsForm(); }
-      catch (_) { toast('Ad privacy choices are not available right now.'); }
+      catch (_) { toast(t('Ad privacy choices are not available right now.')); }
     },
   };
   (() => {
@@ -1359,9 +1466,9 @@
       const busy = S.screen === 'game' || S.screen === 'ready';
       if (a === 'home') { reader.close(); if (!busy && S.screen !== 'home' && S.screen !== 'signin') showHome(); return; }
       if (a === 'toggle-net') {
-        if (busy) return toast('Finish or end this round first.');
+        if (busy) return toast(t('Finish or end this round first.'));
         reader.close();
-        if (S.mode === 'live') { goStandalone(); toast("You're offline. Solo games only."); } else goLive();
+        if (S.mode === 'live') { goStandalone(); toast(t("You're offline. Solo games only.")); } else goLive();
       }
     });
     menu.addEventListener('click', e => {
@@ -1381,15 +1488,47 @@
     });
   })();
 
+  // ───────────────────────── language ─────────────────────────
+  // A round in progress keeps its language; a solo round that hasn't started is simply dropped.
+  const langLocked = () => S.screen === 'game' || (S.screen === 'ready' && S.match?.mode === 'duo');
+  function renderLangPicker() {
+    $$('[data-lang]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.lang === S.lang)));
+    const note = $('[data-lang-note]');
+    if (note) { note.textContent = t('Finish or end this round first.'); note.hidden = !langLocked(); }
+    $('.lang-chips')?.classList.toggle('locked', langLocked());
+  }
+  async function setLang(l) {
+    if (!E.LANGS[l] || l === S.lang) return;
+    if (langLocked()) { renderLangPicker(); replay($('[data-lang-note]'), 'show'); return; }   // shown in the menu itself
+    if (S.screen === 'ready') {                       // solo, not started yet: cancel it, then switch
+      try { if (!S.match?.local) await api('POST', '/api/match/quit'); } catch (_) {}
+      S.match = null; S.screen = 'home';
+    }
+    S.lang = l; saved('vistr.lang', l);
+    document.documentElement.lang = l;
+    translateDom(document.body);                     // top bar, menu, dialogs
+    renderLangPicker();
+    setNet(S.mode === 'live' ? 'online' : 'offline');
+    if ($('#reader').open) Menu.page($('#reader').dataset.page);
+    if (S.screen === 'home' || S.screen === 'results') showHome();
+    else if (S.screen) translateDom(app);
+    if (S.mode === 'live' && S.token) { connectEvents(); checkIn(); }   // others see your new language
+    toast(t('Language: {l}. Words are now in {l} too.', { l: E.LANGS[l].name }));
+  }
+  $('#menu').addEventListener('click', e => { const b = e.target.closest('[data-lang]'); if (b) setLang(b.dataset.lang); });
+
   async function boot() {
+    document.documentElement.lang = S.lang;
+    translateDom(document.body);
+    renderLangPicker();
     NativeAds.init().then(on => { if (on) Ads.showBanner(); });
     try { if (!Ads.data) Ads.load(); } catch (_) {}
     if (S.mode !== 'live') return showHome();
-    app.innerHTML = '<section class="screen narrow"><p class="lead">Connecting…</p></section>';
+    app.innerHTML = `<section class="screen narrow"><p class="lead">${t('Connecting…')}</p></section>`;
     if (!(await reachable(S.server).catch(() => false))) {
       if (!hostedServer()) return offlineFallback();
       // Probably asleep: let them play solo now and go online by itself once it's awake.
-      offlineFallback('Waking up the game server. Play solo meanwhile; you\'ll go online by yourself.');
+      offlineFallback(t("Waking up the game server. Play solo meanwhile; you'll go online by yourself."));
       goLive({ background: true });
       return;
     }

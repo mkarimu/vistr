@@ -38,10 +38,15 @@
   async function load() {
     const out = document.getElementById('out');
     try {
-      const [{ messages }, { reviews }] = await Promise.all([get('/api/contact/messages'), get('/api/reviews/all')]);
+      const [{ messages }, { reviews }, st] = await Promise.all([get('/api/contact/messages'), get('/api/reviews/all'), get('/api/stats')]);
+      const days = Object.entries(st.byDay || {}).sort().slice(-14).reverse();
       sessionStorage.setItem('vistr-admin', key);
       document.getElementById('note').textContent = `${messages.length} message(s), ${reviews.length} review(s).`;
-      out.innerHTML = `<h2>Messages</h2>${messages.map(m => `<div class="card">
+      out.innerHTML = `<h2>Games played</h2><div class="card">
+          <b style="font-size:1.6rem">${st.total.toLocaleString()}</b> in total · <b>${st.today}</b> today<br>
+          <small>Online solo ${st.solo} · two-player ${st.duo} · offline ${st.offline} · ${st.players} registered players</small>
+          ${days.length ? `<table>${days.map(([d, n]) => `<tr><td>${d}</td><td>${n}</td></tr>`).join('')}</table>` : ''}</div>
+        <h2>Messages</h2>${messages.map(m => `<div class="card">
           <b>${esc(m.topic)}</b> <small>${when(m.at)}</small><br>
           <small>${esc(m.name || '(no name)')} &lt;<a href="mailto:${esc(m.email)}">${esc(m.email)}</a>&gt;${m.playerCode ? ` · Player ${esc(m.playerCode)}` : ''} · ${esc(m.app || '')}</small>
           <p>${esc(m.message)}</p>
