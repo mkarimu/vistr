@@ -716,7 +716,7 @@
   function showRequest(d) {
     const dlg = $('#request-dialog');
     translateDom(dlg);
-    $('[data-from]', dlg).textContent = t('Player {p}', { p: d.from });
+    $('[data-from]', dlg).textContent = t('Player {p}', { p: d.from }) + (d.bot ? ' \u{1F916} Bot' : '');
     $('[data-level]', dlg).textContent = d.level;
     $('[data-req-intensity]', dlg).textContent = ilabel(d.intensity) + langNote(d.lang);
     const note = $('[data-solo-note]', dlg);
@@ -1183,7 +1183,7 @@
     const box = $('[data-opp]'); if (!box) return;
     box.hidden = !opp;
     if (opp) {
-      $('[data-oppcode]').textContent = t('Player {p}', { p: opp.playerCode }) + (opp.online === false ? ` (${t('offline')})` : '');
+      $('[data-oppcode]').textContent = t('Player {p}', { p: opp.playerCode }) + (opp.bot ? ' \u{1F916} Bot' : '') + (opp.online === false ? ` (${t('offline')})` : '');
       const os = $('[data-oppscore]');
       if (os.textContent !== String(opp.score)) { if (os.textContent !== '') replay(os, 'pop'); os.textContent = opp.score; }
     }

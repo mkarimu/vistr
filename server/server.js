@@ -35,7 +35,8 @@ function push(playerId, type, data = {}) {
   const frame = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const res of set) res.write(frame);
 }
-function isOnline(playerId) { return (streams.get(playerId)?.size || 0) > 0; }
+let bots = null;   // the SuperAgent's bots (server/bots.js), set up at the end of this file
+function isOnline(playerId) { return (streams.get(playerId)?.size || 0) > 0 || !!(bots && bots.isBot(playerId)); }
 
 setInterval(() => {
   for (const set of streams.values()) for (const res of set) res.write(': ping\n\n');
@@ -240,7 +241,7 @@ function matchView(m, forId) {
     startWord: m.startWord, endsAt: m.endsAt, serverNow: Date.now(),
     ...(m.mode === 'duo' ? { turnSeconds: TURN_SECONDS, ...boardView(m, forId) } : {}),
     players: Object.entries(m.players).map(([pid, p]) => ({
-      playerCode: store.getPlayer(pid).code, me: pid === forId, ready: p.ready,
+      playerCode: store.getPlayer(pid).code, me: pid === forId, ready: p.ready, bot: !!(bots && bots.isBot(pid)),
       online: isOnline(pid), score: p.score, current: p.current, moves: p.chain.length,
       ...(pid === forId ? { streak: p.streak, skips: p.skips, skipsLeft: scoring.RULES.maxSkips - p.skips, hintsLeft: engine.status(p).hintsLeft, jackpotsFound: p.found.length, jackpotsTotal: p.jackpots.length } : {}),
     })),
@@ -312,6 +313,7 @@ function finishMatch(m, reason) {
   if (wasPlaying) {
     store.countGames(m.mode === 'duo' ? 'duo' : 'solo');
     for (const pid of ids) {
+      if (bots && bots.isBot(pid)) continue;   // bots never go on the score boards
       const p = m.players[pid];
       const opp = ids.find(x => x !== pid);
       store.addResult({
@@ -492,6 +494,8 @@ const routes = {
     if (player && ['shown', 'hidden', 'held'].includes(status)) return send(res, 200, { changed: store.setReviewStatus(player, status) });
     send(res, 200, { reviews: store.allReviews().sort((a, b) => b.updatedAt - a.updatedAt).map(r => ({ ...reviewView(r), status: r.status })) });
   },
+  // What the SuperAgent's bots are doing, for the Memoryq SuperAgent (counts only, nothing personal).
+  'GET /api/agent/status': async (req, res) => send(res, 200, bots ? bots.status() : { enabled: false }),
   // For hosts and uptime pingers: answers fast, no sign-in.
   'GET /api/health': async (req, res) => send(res, 200, { ok: true, uptime: Math.round(process.uptime()) }),
   'GET /api/ads': async (req, res) => send(res, 200, loadAds()),
@@ -590,7 +594,7 @@ const routes = {
     incoming.set(target.id, me.id);
     const st = playerStatus(target.id);
     const theirMatch = matches.get(activeMatch.get(target.id));
-    push(target.id, 'request', { from: me.code, level, intensity, lang, expiresIn: REQUEST_MS / 1000,
+    push(target.id, 'request', { from: me.code, bot: !!(bots && bots.isBot(me.id)), level, intensity, lang, expiresIn: REQUEST_MS / 1000,
       inSolo: st.status === 'solo', soloScore: st.status === 'solo' ? theirMatch.players[target.id].score : null });
     broadcastPlayers();
     send(res, 200, { ok: true, to: code, level, intensity, lang, expiresIn: REQUEST_MS / 1000 });
@@ -677,7 +681,10 @@ const routes = {
     send(res, 200, { level, intensity, lang, topTen: store.topTen(me.id, level, intensity, lang), board: store.levelBoard(level, intensity, lang) });
   },
 };
-const PUBLIC = new Set(['GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
+const PUBLIC = new Set(['GET /api/agent/status', 'GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
+
+// The SuperAgent's bots partner lone players (server/bots.js; VISTR_BOTS=off switches them off).
+bots = require('./bots')({ routes, streams, matches, activeMatch, requests, incoming, playerLang, playerStatus, store, dict });
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);

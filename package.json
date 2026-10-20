@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node server/server.js",
     "test": "node test/scoring.test.js && node test/e2e.test.js",
+    "test:bots": "node test/bots.test.js",
     "build-dictionary": "python3 tools/build_dictionary.py /usr/share/hunspell/en_US.dic /usr/share/hunspell/en_US.aff client/words"
   }
 }
