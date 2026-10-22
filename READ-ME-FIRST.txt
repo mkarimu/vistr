@@ -1,0 +1,14 @@
+Uploading Vistr to GitHub in two steps (GitHub's upload page takes at most 100 files at a time)
+
+1. On your repository's main page: Add file -> Upload files.
+   Open the folder "1-upload-first", select everything inside it (Ctrl+A),
+   drag it onto the page, then click "Commit changes".
+
+2. Back on the repository's main page: Add file -> Upload files again.
+   Open the folder "2-upload-second" and drag the "client" folder inside it
+   onto the page, then click "Commit changes".
+   (These are the Spanish, French, Portuguese and Swahili word lists; GitHub puts
+   them into client/words/ next to the English ones.)
+
+Then on your server (Bitvise terminal):
+   cd /home/mkarimu && sudo bash setup-server.sh update

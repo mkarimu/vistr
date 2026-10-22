@@ -1,0 +1,4 @@
+node_modules/
+server/data/db.json
+server/data/db.json.tmp
+server/data/admin-key.txt
