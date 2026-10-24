@@ -748,3 +748,66 @@ dialog.reader[open] { display: flex; }
 .intensity { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .intensity button { min-width: 0; padding: 6px 4px; }
 .intensity b { font-size: clamp(0.78rem, 3.7vw, 0.98rem); max-width: 100%; overflow-wrap: anywhere; text-align: center; line-height: 1.15; }
+
+/* ── Player record (home, when online) ── */
+.record { background: linear-gradient(135deg, rgba(69, 200, 245, 0.16), rgba(255, 95, 168, 0.14)); border: 2px solid var(--line);
+  border-radius: var(--radius); padding: 14px 16px; margin-bottom: 18px; }
+.record-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.record-id { font-weight: 700; font-size: 1.1rem; }
+.record-rank { font-weight: 700; color: var(--ink); background: var(--sunshine); border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; }
+.record-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 12px 0 8px; text-align: center; }
+.record-stats div { background: rgba(0, 0, 0, 0.2); border-radius: 12px; padding: 8px 4px; min-width: 0; }
+.record-stats b { display: block; font-size: clamp(1.05rem, 5vw, 1.45rem); font-variant-numeric: tabular-nums; color: var(--cream); }
+.record-stats span { display: block; font-size: 0.75rem; color: var(--mute); line-height: 1.2; overflow-wrap: anywhere; }
+.record-stats div:first-child b { color: var(--lime); }
+.record-line { margin: 0; font-size: 0.88rem; color: var(--mute); }
+.record-more { margin-top: 8px; }
+.record-more summary { cursor: pointer; font-weight: 600; color: var(--sky); }
+.top-rated { list-style: none; padding: 0; margin: 8px 0; counter-reset: r; }
+.top-rated li { counter-increment: r; display: grid; grid-template-columns: 1.6em 1fr auto; gap: 6px; padding: 4px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.top-rated li::before { content: counter(r); color: var(--mute); font-weight: 700; }
+.top-rated li.empty { display: block; color: var(--mute); }
+.top-rated li.empty::before { content: none; }
+.top-rated li.mine { color: var(--sunshine); }
+.top-rated small { color: var(--mute); margin-left: 4px; }
+.top-rated b { font-variant-numeric: tabular-nums; }
+
+/* ── Online / Available IDs ── */
+.lobby { display: grid; gap: 6px; margin: 4px 0 10px; }
+.lobby p { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lobby-label { font-size: 0.85rem; font-weight: 700; color: var(--mute); min-width: 6.5em; }
+.lobby-label b { color: var(--cream); margin-left: 2px; }
+.lobby-label.avail b { color: var(--lime); }
+.lobby-ids { display: flex; flex-wrap: wrap; gap: 6px; }
+.lobby .none { color: var(--mute); font-size: 0.85rem; }
+.id-chip { font: inherit; font-weight: 700; font-size: 0.9rem; font-variant-numeric: tabular-nums; padding: 3px 10px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08); border: 2px solid rgba(255, 255, 255, 0.18); color: var(--cream); }
+.id-chip.tap { cursor: pointer; border-color: var(--lime); color: var(--lime); }
+.id-chip.tap:hover, .id-chip.tap:focus-visible { background: var(--lime); color: var(--ink); outline: none; }
+.id-chip.me { border-color: var(--sunshine); color: var(--sunshine); }
+.id-chip small { font-weight: 600; opacity: 0.8; }
+
+/* ── Delete my Player ID ── */
+.link.danger { color: #ff9a9a; }
+.hint.center { text-align: center; font-size: 0.82rem; }
+.delete-box { grid-template-columns: minmax(0, 1fr); min-width: 0; margin-top: 10px; padding: 14px; border-radius: var(--radius); border: 2px solid rgba(255, 92, 92, 0.6); background: rgba(255, 92, 92, 0.1); display: grid; gap: 10px; }
+.delete-box p { margin: 0; }
+.delete-box label { display: grid; gap: 6px; font-weight: 600; min-width: 0; }
+.delete-box input { width: 100%; min-width: 0; box-sizing: border-box; font-size: 1.6rem; }
+.delete-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.delete-actions .btn { flex: 1 1 8em; }
+.btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+
+/* ── Results: record after the game ── */
+.record-after { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: center; margin-top: 12px; padding: 10px 12px;
+  border-radius: 12px; background: rgba(0, 0, 0, 0.2); color: var(--mute); }
+.record-after b { color: var(--cream); font-variant-numeric: tabular-nums; }
+.record-after b.up { color: var(--lime); }
+.record-after b.down { color: var(--bad); }
+.record-after small { flex-basis: 100%; text-align: center; }
+.record-name { margin: 2px 0 0; color: var(--mute); font-size: 0.92rem; }
+.record-name span:not(:empty) { color: var(--cream); font-weight: 600; margin-right: 6px; }
+.record-name .link { font-size: 0.85rem; }
+.name-form { display: flex; gap: 8px; margin-top: 8px; }
+.name-form input { flex: 1; min-width: 0; font: inherit; color: var(--cream); background: rgba(0, 0, 0, 0.25); border: 2px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+.stack label small { font-weight: 400; color: var(--mute); font-size: 0.82rem; }

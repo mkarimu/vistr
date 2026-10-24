@@ -35,12 +35,28 @@ function push(playerId, type, data = {}) {
   const frame = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const res of set) res.write(frame);
 }
-let bots = null;   // the SuperAgent's bots (server/bots.js), set up at the end of this file
-function isOnline(playerId) { return (streams.get(playerId)?.size || 0) > 0 || !!(bots && bots.isBot(playerId)); }
+function isOnline(playerId) { return (streams.get(playerId)?.size || 0) > 0; }
 
 setInterval(() => {
   for (const set of streams.values()) for (const res of set) res.write(': ping\n\n');
+  // Keep "last seen" current for the admin page; written to disk every 5 minutes.
+  const persist = Date.now() - lastVisitSave > 300_000; if (persist) lastVisitSave = Date.now();
+  for (const v of visits.values()) store.touchVisit(v.entry, persist);
 }, 20_000);
+// ── Visits: from the app connecting until it has been gone for 30 seconds ──
+const visits = new Map();   // playerId -> { entry, closeTimer }
+let lastVisitSave = Date.now();
+function visitOpen(pid, ip, app) {
+  const v = visits.get(pid);
+  if (v) { clearTimeout(v.closeTimer); v.closeTimer = null; return; }   // a quick reconnect is the same visit
+  const entry = store.startVisit(pid, ip, app);
+  if (entry) visits.set(pid, { entry, closeTimer: null });
+}
+function visitClosed(pid) {
+  const v = visits.get(pid); if (!v) return;
+  clearTimeout(v.closeTimer);
+  v.closeTimer = setTimeout(() => { if (!isOnline(pid)) { store.endVisit(v.entry); visits.delete(pid); } }, 30_000);
+}
 
 // ───────────────────────── sign-in ─────────────────────────
 // First visit: email → the server assigns a 2–4 digit Player ID.
@@ -182,13 +198,26 @@ function availablePlayers() {
   return list.sort((a, b) => (a.status === 'free' ? 0 : 1) - (b.status === 'free' ? 0 : 1) || Number(a.playerCode) - Number(b.playerCode));
 }
 
+// Everyone connected (Online), and who of them is free to start a game now (Available).
+function lobby() {
+  const online = [], available = [];
+  for (const pid of streams.keys()) {
+    if (!isOnline(pid) || !store.isAvailable(pid)) continue;
+    const code = store.getPlayer(pid)?.code; if (!code) continue;
+    online.push(code);
+    if (playerStatus(pid).status === 'free' && !incoming.has(pid) && !requests.has(pid)) available.push(code);
+  }
+  const byNum = (a, b) => Number(a) - Number(b);
+  return { online: online.sort(byNum), available: available.sort(byNum) };
+}
+
 let playersTimer = null;
 function broadcastPlayers() { // batched, so a burst of changes sends one update
   if (playersTimer) return;
   playersTimer = setTimeout(() => {
     playersTimer = null;
-    const players = availablePlayers();
-    for (const pid of streams.keys()) push(pid, 'players', { players, serverNow: Date.now() });
+    const players = availablePlayers(), lists = lobby();
+    for (const pid of streams.keys()) push(pid, 'players', { players, lobby: lists, serverNow: Date.now() });
   }, 50);
 }
 
@@ -241,7 +270,7 @@ function matchView(m, forId) {
     startWord: m.startWord, endsAt: m.endsAt, serverNow: Date.now(),
     ...(m.mode === 'duo' ? { turnSeconds: TURN_SECONDS, ...boardView(m, forId) } : {}),
     players: Object.entries(m.players).map(([pid, p]) => ({
-      playerCode: store.getPlayer(pid).code, me: pid === forId, ready: p.ready, bot: !!(bots && bots.isBot(pid)),
+      playerCode: store.getPlayer(pid).code, me: pid === forId, ready: p.ready,
       online: isOnline(pid), score: p.score, current: p.current, moves: p.chain.length,
       ...(pid === forId ? { streak: p.streak, skips: p.skips, skipsLeft: scoring.RULES.maxSkips - p.skips, hintsLeft: engine.status(p).hintsLeft, jackpotsFound: p.found.length, jackpotsTotal: p.jackpots.length } : {}),
     })),
@@ -310,10 +339,19 @@ function finishMatch(m, reason) {
   const wasPlaying = m.status === 'playing';
   m.status = 'over';
   const ids = Object.keys(m.players);
+  let records = {};
   if (wasPlaying) {
+    // The player record: games that never got going (no moves at all) don't count,
+    // and a solo game cut short to accept a two-player game isn't rated.
+    const moved = ids.some(pid => m.players[pid].chain.length > 0);
+    if (moved) records = store.recordGame({
+      level: m.level, intensity: m.intensity, lang: m.lang, mode: m.mode,
+      players: ids.map(pid => ({ id: pid, score: m.players[pid].score, words: m.players[pid].chain.filter(c => c.valid).length })),
+      rated: reason !== 'switched', fullRound: reason === 'time',
+    });
     store.countGames(m.mode === 'duo' ? 'duo' : 'solo');
+    if (moved) for (const pid of ids) { const v = visits.get(pid); if (v) store.visitGame(v.entry); }
     for (const pid of ids) {
-      if (bots && bots.isBot(pid)) continue;   // bots never go on the score boards
       const p = m.players[pid];
       const opp = ids.find(x => x !== pid);
       store.addResult({
@@ -326,7 +364,7 @@ function finishMatch(m, reason) {
   for (const pid of ids) {
     activeMatch.delete(pid);
     push(pid, 'match-over', {
-      reason, endedBy: m.endedBy || null, match: matchView(m, pid),
+      reason, endedBy: m.endedBy || null, match: matchView(m, pid), record: records[pid] || store.recordView(pid),
       topTen: store.topTen(pid, m.level, m.intensity, m.lang), board: store.levelBoard(m.level, m.intensity, m.lang),
     });
   }
@@ -494,8 +532,6 @@ const routes = {
     if (player && ['shown', 'hidden', 'held'].includes(status)) return send(res, 200, { changed: store.setReviewStatus(player, status) });
     send(res, 200, { reviews: store.allReviews().sort((a, b) => b.updatedAt - a.updatedAt).map(r => ({ ...reviewView(r), status: r.status })) });
   },
-  // What the SuperAgent's bots are doing, for the Memoryq SuperAgent (counts only, nothing personal).
-  'GET /api/agent/status': async (req, res) => send(res, 200, bots ? bots.status() : { enabled: false }),
   // For hosts and uptime pingers: answers fast, no sign-in.
   'GET /api/health': async (req, res) => send(res, 200, { ok: true, uptime: Math.round(process.uptime()) }),
   'GET /api/ads': async (req, res) => send(res, 200, loadAds()),
@@ -515,20 +551,50 @@ const routes = {
     let player = store.findPlayerByEmail(email);
     const isNew = !player;
     if (isNew) { player = store.createPlayer(email); emailPlayerId(email, player.code); }
+    if (body.name && (isNew || !player.name)) store.setName(player.id, body.name);
+    store.noteSignIn(player.id, clientIp(req));
     send(res, 200, { token: store.createSession(player.id), player: { code: player.code, email: player.email }, isNew });
   },
   'POST /api/auth/id': async (req, res, { body }) => {
-    const ip = req.socket.remoteAddress;
+    const ip = clientIp(req);   // behind Caddy/nginx, the real address (not the proxy's)
     if (tooManyIdTries(ip)) return send(res, 429, { error: 'Too many tries. Wait 10 minutes, or sign in with your email.' });
     const code = String(body.code || '').replace(/\D/g, '');
     const player = code && store.findPlayerByCode(code);
     if (!player) { noteIdFailure(ip); return send(res, 404, { error: `There is no player ${code || 'with that ID'}. New here? Use your email to get an ID.` }); }
+    store.noteSignIn(player.id, clientIp(req));
     send(res, 200, { token: store.createSession(player.id), player: { code: player.code, email: player.email } });
   },
   'POST /api/auth/signout': async (req, res, { me }) => {
     store.deleteSession((req.headers.authorization || '').slice(7));
     endRequestsFor(me.id, 'left');
     send(res, 200, { ok: true });
+  },
+  // The player's record (points, total, rating), plus the best-rated players.
+  'GET /api/record': async (req, res, { me }) => send(res, 200, { record: store.recordView(me.id), top: store.ratingBoard(10) }),
+  // The player asked to be removed. They type their ID to confirm.
+  'POST /api/account/delete': async (req, res, { me, body }) => {
+    if (String(body.code || '').replace(/\D/g, '') !== me.code) return send(res, 400, { error: 'Type your Player ID to confirm.' });
+    endRequestsFor(me.id, 'left');
+    const m = matches.get(activeMatch.get(me.id));
+    if (m) { m.endedBy = me.code; finishMatch(m, 'ended'); }
+    for (const s of streams.get(me.id) || []) s.end();
+    streams.delete(me.id); playerLang.delete(me.id);
+    clearTimeout(visits.get(me.id)?.closeTimer); visits.delete(me.id);
+    const code = store.deletePlayer(me.id);
+    broadcastPlayers();
+    console.log(`Player ${code} deleted their ID.`);
+    send(res, 200, { ok: true, deleted: code });
+  },
+  // The player's own name (optional; only they and the admin page see it).
+  'POST /api/me/name': async (req, res, { me, body }) => send(res, 200, { name: store.setName(me.id, body.name) }),
+  'GET /api/admin/activity': async (req, res, { url }) => {
+    if (!adminOk(url)) return send(res, 403, { error: 'Wrong admin key.' });
+    send(res, 200, { visits: store.activityList({ code: url.searchParams.get('player') || '', limit: Number(url.searchParams.get('limit')) || 500 }) });
+  },
+  'GET /api/admin/players': async (req, res, { url }) => {
+    if (!adminOk(url)) return send(res, 403, { error: 'Wrong admin key.' });
+    const { online, available } = lobby();
+    send(res, 200, { players: store.allPlayers(), online, available });
   },
   'GET /api/me': async (req, res, { me }) => {
     const mid = activeMatch.get(me.id);
@@ -543,6 +609,7 @@ const routes = {
     res.write(`:${' '.repeat(2048)}\nretry: 2000\n\n`);
     if (!streams.has(me.id)) streams.set(me.id, new Set());
     streams.get(me.id).add(res);
+    visitOpen(me.id, clientIp(req), url.searchParams.get('app') === 'android' ? 'Android app' : 'Browser');
     clearTimeout(dropTimers.get(me.id)); dropTimers.delete(me.id);
     const mid = activeMatch.get(me.id);
     if (mid && matches.get(mid)) broadcastMatch(matches.get(mid));
@@ -552,6 +619,7 @@ const routes = {
       set?.delete(res);
       if (set && set.size === 0) {
         streams.delete(me.id);
+        visitClosed(me.id);
         setTimeout(() => { if (!isOnline(me.id)) onDisconnect(me.id); }, 3000);
       }
     });
@@ -562,7 +630,7 @@ const routes = {
     const out = requests.get(me.id);
     const inFrom = incoming.get(me.id);
     send(res, 200, {
-      players: availablePlayers(), serverNow: Date.now(), available: store.isAvailable(me.id),
+      players: availablePlayers(), lobby: lobby(), serverNow: Date.now(), available: store.isAvailable(me.id),
       outgoing: out ? { to: store.getPlayer(out.to).code, level: out.level, intensity: out.intensity, lang: out.lang } : null,
       incoming: inFrom ? { from: store.getPlayer(inFrom).code, level: requests.get(inFrom).level, intensity: requests.get(inFrom).intensity, lang: requests.get(inFrom).lang,
         expiresIn: Math.max(1, Math.round((requests.get(inFrom).expiresAt - Date.now()) / 1000)),
@@ -594,7 +662,7 @@ const routes = {
     incoming.set(target.id, me.id);
     const st = playerStatus(target.id);
     const theirMatch = matches.get(activeMatch.get(target.id));
-    push(target.id, 'request', { from: me.code, bot: !!(bots && bots.isBot(me.id)), level, intensity, lang, expiresIn: REQUEST_MS / 1000,
+    push(target.id, 'request', { from: me.code, level, intensity, lang, expiresIn: REQUEST_MS / 1000,
       inSolo: st.status === 'solo', soloScore: st.status === 'solo' ? theirMatch.players[target.id].score : null });
     broadcastPlayers();
     send(res, 200, { ok: true, to: code, level, intensity, lang, expiresIn: REQUEST_MS / 1000 });
@@ -681,10 +749,7 @@ const routes = {
     send(res, 200, { level, intensity, lang, topTen: store.topTen(me.id, level, intensity, lang), board: store.levelBoard(level, intensity, lang) });
   },
 };
-const PUBLIC = new Set(['GET /api/agent/status', 'GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
-
-// The SuperAgent's bots partner lone players (server/bots.js; VISTR_BOTS=off switches them off).
-bots = require('./bots')({ routes, streams, matches, activeMatch, requests, incoming, playerLang, playerStatus, store, dict });
+const PUBLIC = new Set(['GET /api/admin/activity', 'GET /api/admin/players', 'GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);

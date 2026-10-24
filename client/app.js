@@ -99,7 +99,10 @@
     });
     const data = await r.json().catch(() => ({}));
     if (r.status === 401 && S.token) { sessionEnded(); throw new Error(t('Your session ended. Sign in again.')); }
-    if (!r.ok && !('outcome' in data)) throw new Error(data.error ? tr(data.error) : t('The server answered {n}.', { n: r.status }));
+    if (!r.ok && !('outcome' in data)) {
+      const err = new Error(data.error ? tr(data.error) : t('The server answered {n}.', { n: r.status }));
+      err.status = r.status; throw err;
+    }
     return data;
   }
 
@@ -269,13 +272,15 @@
   // for anything; the email page appears only when the ID isn't known (any more).
   async function signInWithKnownId() {
     const id = saved('vistr.lastId');
-    if (!id) return false;
+    if (!id || saved('vistr.signedOut')) return false;   // after Sign out, wait for the player to sign in
     try {
       const r = await api('POST', '/api/auth/id', { code: id });
       signedIn(r);
       return true;
-    } catch (_) {
-      saved('vistr.lastId', null);   // the server doesn't know this ID: ask for the email
+    } catch (e) {
+      // Only a server that says "no such player" makes the app forget the ID. A network
+      // hiccup or "too many tries" never does: the ID is the player's for good.
+      if (e.status === 404) saved('vistr.lastId', null);
       return false;
     }
   }
@@ -301,7 +306,7 @@
     if (S.mode !== 'live' || !S.token) return;
     try {
       const r = await api('GET', `/api/players?lang=${S.lang}`);
-      S.players = r.players; S.playersSkew = r.serverNow - Date.now();
+      S.players = r.players; S.lobby = r.lobby; S.playersSkew = r.serverNow - Date.now();
       if (r.incoming && !$('#request-dialog').open) showRequest(r.incoming);
       if (S.outgoing && !r.outgoing) S.outgoing = null;
       if (S.screen === 'home') renderPlayers();
@@ -324,11 +329,11 @@
   function connectEvents() {
     S.events?.close();
     watch();
-    const es = new EventSource(`${S.server.replace(/\/$/, '')}/api/events?token=${encodeURIComponent(S.token)}&lang=${S.lang}`);
+    const es = new EventSource(`${S.server.replace(/\/$/, '')}/api/events?token=${encodeURIComponent(S.token)}&lang=${S.lang}${isNative ? '&app=android' : ''}`);
     S.events = es;
     const on = (type, fn) => es.addEventListener(type, e => fn(JSON.parse(e.data)));
     on('players', d => {
-      S.players = d.players; S.playersSkew = d.serverNow - Date.now();
+      S.players = d.players; S.lobby = d.lobby; S.playersSkew = d.serverNow - Date.now();
       if (S.screen === 'home') renderPlayers();
     });
     on('request', showRequest);
@@ -586,8 +591,9 @@
 
   function signedIn(r) {
     S.token = r.token; saved('vistr.token', r.token);
-    S.player = r.player; saved('vistr.lastId', r.player.code);
+    S.player = r.player; saved('vistr.lastId', r.player.code); saved('vistr.signedOut', null);
     S.mode = 'live'; saved('vistr.mode', 'live');
+    S.record = null;
     becomeAvailable();
     connectEvents();
   }
@@ -596,7 +602,12 @@
     mount('signin', 'signin');
     const fi = $('[data-form=id]'), fe = $('[data-form=email]');
     const last = saved('vistr.lastId');
-    if (last) fi.code.value = last;
+    if (last) {   // the ID stays on this device after Sign out: offer it first
+      fi.code.value = last; $('[data-has-id]').open = true;
+      $('.signin-title').textContent = t('Welcome back, Player {p}', { p: last });
+      $('.signin-title + .lead').textContent = t('Tap Go online with my ID. Your points and rating are waiting.');
+      $('[data-form=email]').before($('[data-has-id]'));
+    }
     fi.onsubmit = e => {
       e.preventDefault();
       guard(async () => { signedIn(await api('POST', '/api/auth/id', { code: fi.code.value.trim() })); showHome(); toast(t("You're online as Player {p}.", { p: S.player.code })); });
@@ -604,7 +615,7 @@
     fe.onsubmit = e => {
       e.preventDefault();
       guard(async () => {
-        const r = await api('POST', '/api/auth/register', { email: fe.email.value.trim() });
+        const r = await api('POST', '/api/auth/register', { email: fe.email.value.trim(), name: fe.name.value.trim() });
         signedIn(r);
         if (r.isNew) showWelcome(true);            // new player: show their new ID
         else { showHome(); toast(t("Welcome back, Player {p}. You're online.", { p: r.player.code })); }
@@ -655,14 +666,37 @@
       if (a === 'toggle-net') { if (S.mode === 'live') goOffline(); else goLive(); }
       if (a === 'request') sendRequest(btn.dataset.code);
       if (a === 'cancel-request') guard(async () => { await api('POST', '/api/request/cancel'); S.outgoing = null; renderPlayers(); });
-      if (a === 'signout') guard(async () => { await api('POST', '/api/auth/signout').catch(() => {}); signedOut(); });
+      if (a === 'signout') guard(async () => { await api('POST', '/api/auth/signout').catch(() => {}); signedOut(); toast(t('Signed out. Your Player ID {p} is kept for next time.', { p: saved('vistr.lastId') })); });
+      if (a === 'edit-name') { const nf = $('[data-form=name]'); nf.hidden = false; nf.name.value = S.record?.record?.name || ''; nf.name.focus(); }
+      if (a === 'delete-id') { const df = $('[data-form=delete]'); df.hidden = false; btn.hidden = true; df.code.focus(); }
+      if (a === 'keep-id') { const df = $('[data-form=delete]'); df.hidden = true; df.reset(); $('[data-action=delete-id]').hidden = false; }
+    };
+    const nf = $('[data-form=name]');
+    nf.onsubmit = e => {
+      e.preventDefault();
+      guard(async () => {
+        const r = await api('POST', '/api/me/name', { name: nf.name.value });
+        if (S.record?.record) S.record.record.name = r.name;
+        nf.hidden = true; Record.render(S.record);
+        toast(r.name ? t('Saved. Only you and Vistr see your name.') : t('Name removed.'));
+      });
+    };
+    const df = $('[data-form=delete]');
+    df.onsubmit = e => {
+      e.preventDefault();
+      guard(async () => {
+        const r = await api('POST', '/api/account/delete', { code: df.code.value.trim() });
+        forgetPlayer();
+        toast(t('Player ID {p} and everything saved with it have been deleted.', { p: r.deleted }));
+      });
     };
 
     renderPlayers();
     if (!live) return;
+    Record.show();
     S.clockTimer = setInterval(renderClocks, 1000);
     api('GET', `/api/players?lang=${S.lang}`).then(r => {
-      S.players = r.players; S.playersSkew = r.serverNow - Date.now();
+      S.players = r.players; S.lobby = r.lobby; S.playersSkew = r.serverNow - Date.now();
       S.outgoing = r.outgoing;
       if (r.incoming && !$('#request-dialog').open) showRequest(r.incoming);
       if (S.screen === 'home') renderPlayers();
@@ -676,6 +710,7 @@
       return;
     }
     $('[data-avail-hint]').textContent = t('Others can see you and send you a request, even while you play solo. To hide, tap ONLINE at the top.');
+    renderLobby();
     const out = $('[data-outgoing]');
     out.hidden = !S.outgoing;
     if (S.outgoing) $('[data-outgoing-text]').textContent = t('Request sent to Player {p} for {n} letters, {i}. Waiting for them…', { p: S.outgoing.to, n: S.outgoing.level, i: ilabel(S.outgoing.intensity) }) + langNote(S.outgoing.lang);
@@ -690,6 +725,52 @@
       : `<li class="empty">${t('Nobody else is available right now. Play solo meanwhile; a request can reach you mid-game.')}</li>`;
     $$('[data-action=request]', ul).forEach(b => { b.textContent = t('Play {n} letters', { n: S.level }); b.title = t('{n} letters, {i}', { n: S.level, i: ilabel(S.intensity) }); });
   }
+  // Online: everyone connected right now. Available: free to start a game this minute
+  // (not in a game and not answering a request). Tap an available ID to send a request.
+  function renderLobby() {
+    const box = $('[data-lobby]'); if (!box) return;
+    const L = S.lobby || { online: [], available: [] }, me = S.player?.code;
+    const chip = (code, tap) => code === me
+      ? `<span class="id-chip me">${esc(code)} <small>${t('you')}</small></span>`
+      : tap ? `<button type="button" class="id-chip tap" data-action="request" data-code="${esc(code)}" title="${esc(t('Send Player {p} a request', { p: code }))}">${esc(code)}</button>`
+        : `<span class="id-chip">${esc(code)}</span>`;
+    $('[data-online-count]', box).textContent = L.online.length;
+    $('[data-available-count]', box).textContent = L.available.length;
+    $('[data-online-ids]', box).innerHTML = L.online.map(c => chip(c, false)).join('') || `<span class="none">${t('nobody yet')}</span>`;
+    $('[data-available-ids]', box).innerHTML = L.available.map(c => chip(c, true)).join('') || `<span class="none">${t('nobody right now')}</span>`;
+  }
+
+  // ── The player's record: points, total, rating. Kept as long as the ID exists. ──
+  const num = n => Number(n || 0).toLocaleString(S.lang);
+  const Record = {
+    async show() {
+      if (S.record) this.render(S.record);
+      try { const r = await api('GET', '/api/record'); S.record = r; if (S.screen === 'home') this.render(r); } catch (_) {}
+    },
+    render(r) {
+      const box = $('[data-record]'); if (!box || !r?.record) return;
+      const c = r.record;
+      box.hidden = false;
+      $('[data-record-id]', box).textContent = t('Player {p}', { p: c.playerCode });
+      $('[data-record-rank]', box).textContent = t(c.rank);
+      $('[data-record-name]', box).textContent = c.name || '';
+      $('[data-action=edit-name]', box).textContent = t(c.name ? 'Change' : 'Add your name');
+      $('[data-r-rating]', box).textContent = num(c.rating);
+      $('[data-r-points]', box).textContent = num(c.points);
+      $('[data-r-games]', box).textContent = num(c.games);
+      $('[data-r-best]', box).textContent = num(c.best);
+      const duo = c.wins + c.losses + c.draws;
+      $('[data-r-line]', box).textContent = [
+        c.games ? t('{n} points a game on average', { n: c.average.toLocaleString(S.lang) }) : t('Play an online game to start your record.'),
+        duo ? t('Two-player: {w} won, {l} lost, {d} drawn', { w: c.wins, l: c.losses, d: c.draws }) : '',
+        c.nextRank ? t('{n} more points to {r}', { n: num(c.nextRank.at - c.points), r: t(c.nextRank.name) }) : '',
+      ].filter(Boolean).join(' · ');
+      $('[data-top-rated]', box).innerHTML = (r.top || []).length
+        ? r.top.map(p => `<li class="${p.playerCode === c.playerCode ? 'mine' : ''}"><span>${t('Player {p}', { p: esc(p.playerCode) })} <small>${esc(t(p.rank))}</small></span><b>${num(p.rating)}</b></li>`).join('')
+        : `<li class="empty">${t('Players appear here after 3 online games.')}</li>`;
+    },
+  };
+
   const ilabel = name => t(E.INTENSITY[name]?.label || 'Intermediate');
   const langNote = l => (l && l !== S.lang ? ` (${E.LANGS[l]?.name || l})` : '');
   function statusText(p) {
@@ -716,7 +797,7 @@
   function showRequest(d) {
     const dlg = $('#request-dialog');
     translateDom(dlg);
-    $('[data-from]', dlg).textContent = t('Player {p}', { p: d.from }) + (d.bot ? ' \u{1F916} Bot' : '');
+    $('[data-from]', dlg).textContent = t('Player {p}', { p: d.from });
     $('[data-level]', dlg).textContent = d.level;
     $('[data-req-intensity]', dlg).textContent = ilabel(d.intensity) + langNote(d.lang);
     const note = $('[data-solo-note]', dlg);
@@ -1183,7 +1264,7 @@
     const box = $('[data-opp]'); if (!box) return;
     box.hidden = !opp;
     if (opp) {
-      $('[data-oppcode]').textContent = t('Player {p}', { p: opp.playerCode }) + (opp.bot ? ' \u{1F916} Bot' : '') + (opp.online === false ? ` (${t('offline')})` : '');
+      $('[data-oppcode]').textContent = t('Player {p}', { p: opp.playerCode }) + (opp.online === false ? ` (${t('offline')})` : '');
       const os = $('[data-oppscore]');
       if (os.textContent !== String(opp.score)) { if (os.textContent !== '') replay(os, 'pop'); os.textContent = opp.score; }
     }
@@ -1241,6 +1322,16 @@
   });
 
   // ───────────────────────── results ─────────────────────────
+  function recordLine(c) {
+    const d = c.delta;
+    const move = d > 0 ? `<b class="up">+${d}</b>` : d < 0 ? `<b class="down">−${Math.abs(d)}</b>` : '';
+    return `<div class="record-after">
+      <span>${t('Rating')} <b>${num(c.rating)}</b> ${move}</span>
+      <span>${t('Total points')} <b>${num(c.points)}</b></span>
+      <span>${esc(t(c.rank))}</span>
+      ${c.par != null ? `<small>${t('Par for this game: {n} points', { n: c.par })}</small>` : ''}
+    </div>`;
+  }
   function showResults(d) {
     const m = d.match;
     S.match = null; S.game = null;
@@ -1258,7 +1349,9 @@
     $('[data-final]').innerHTML = `
       <div class="row ${opp && me.score > opp.score ? 'win' : ''}"><span>${t('You')}</span><b>${me.score}</b></div>
       ${opp ? `<div class="row ${opp.score > me.score ? 'win' : ''}"><span>${t('Player {p}', { p: esc(opp.playerCode) })}</span><b>${opp.score}</b></div>` : ''}
-      ${mine?.chain?.length > 1 ? `<p class="words">${mine.chain.map(esc).join(' › ')}</p>` : ''}`;
+      ${mine?.chain?.length > 1 ? `<p class="words">${mine.chain.map(esc).join(' › ')}</p>` : ''}
+      ${d.record ? recordLine(d.record) : ''}`;
+    if (d.record) S.record = null;   // home fetches the fresh one
     $('[data-boards]').innerHTML = boardHtml(t('Your top 10, {n} letters, {i}', { n: m.level, i: ilabel(m.intensity) }), d.topTen.map(x => ({ name: fmtDate(x.finishedAt), score: x.score, mine: x === mine })), t('No games saved yet.'))
       + (d.local ? '' : boardHtml(t('All-time, {n} letters, {i}', { n: m.level, i: ilabel(m.intensity) }), d.board.map(b => ({ name: t('Player {p}', { p: b.playerCode }), score: b.score, mine: b.playerCode === S.player?.code })), t('No games yet.')));
     app.onclick = e => {
@@ -1269,8 +1362,13 @@
   }
 
   // ───────────────────────── boot ─────────────────────────
-  function signedOut() { // Sign out button: forget this player on this device, back to offline
-    S.token = null; S.player = null; saved('vistr.token', null); saved('vistr.lastId', null);
+  function signedOut() { // Sign out button: end the session but keep the Player ID for next time
+    S.token = null; S.player = null; S.record = null; saved('vistr.token', null); saved('vistr.signedOut', '1');
+    goStandalone();
+  }
+  function forgetPlayer() { // the player deleted their ID: nothing about it stays on this device
+    S.token = null; S.player = null; S.record = null;
+    ['vistr.token', 'vistr.lastId', 'vistr.signedOut'].forEach(k => saved(k, null));
     goStandalone();
   }
   async function sessionEnded() { // the server no longer knows this sign-in: try the ID, else ask

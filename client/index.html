@@ -55,6 +55,9 @@
         <label>Email
           <input name="email" type="email" required autocomplete="email" placeholder="you@example.com">
         </label>
+        <label>Your name <small>(optional; other players only see your ID)</small>
+          <input name="name" type="text" maxlength="40" autocomplete="name" placeholder="e.g. Amina">
+        </label>
         <button class="btn primary" type="submit">Get my Player ID</button>
       </form>
       <details class="advanced" data-has-id>
@@ -120,7 +123,36 @@
 
         <!-- Online: who wants a play mate -->
         <div class="live-area" data-live-only>
+          <!-- Player record: kept for as long as the Player ID exists -->
+          <section class="record" data-record hidden aria-label="Your record">
+            <div class="record-head">
+              <span class="record-id" data-record-id></span>
+              <span class="record-rank" data-record-rank></span>
+            </div>
+            <p class="record-name"><span data-record-name></span> <button class="link" type="button" data-action="edit-name">Add your name</button></p>
+            <form class="name-form" data-form="name" hidden>
+              <input name="name" type="text" maxlength="40" autocomplete="name" placeholder="Your name" aria-label="Your name">
+              <button class="btn" type="submit">Save</button>
+            </form>
+            <div class="record-stats">
+              <div><b data-r-rating></b><span>Rating</span></div>
+              <div><b data-r-points></b><span>Total points</span></div>
+              <div><b data-r-games></b><span>Games</span></div>
+              <div><b data-r-best></b><span>Best game</span></div>
+            </div>
+            <p class="record-line" data-r-line></p>
+            <details class="record-more">
+              <summary>Top rated players</summary>
+              <ol class="top-rated" data-top-rated></ol>
+              <p class="hint">Your rating starts at 1000. Solo, beat the average score for your word length and intensity to raise it; harder settings count more. In two-player games, beating a higher-rated player gains more. Only online games count.</p>
+            </details>
+          </section>
+
           <h2 id="together-title">Play with someone</h2>
+          <div class="lobby" data-lobby aria-live="polite">
+            <p><span class="lobby-label">Online <b data-online-count>0</b></span><span class="lobby-ids" data-online-ids></span></p>
+            <p><span class="lobby-label avail">Available <b data-available-count>0</b></span><span class="lobby-ids" data-available-ids></span></p>
+          </div>
           <p class="hint" data-avail-hint></p>
           <div class="outgoing" data-outgoing hidden>
             <span data-outgoing-text></span>
@@ -132,6 +164,18 @@
             <button class="btn" type="submit">Send request</button>
           </form>
           <button class="link center" type="button" data-action="signout">Sign out of this device</button>
+          <p class="hint center">Signing out keeps your Player ID, points and rating. Sign in again any time with your ID or email.</p>
+          <button class="link center danger" type="button" data-action="delete-id">Delete my Player ID…</button>
+          <form class="delete-box" data-form="delete" hidden>
+            <p><b>Delete your Player ID for good?</b> Your ID, points, rating, top scores and review are removed and can't be brought back. The number won't be given to anyone else.</p>
+            <label>Type your Player ID to confirm
+              <input name="code" inputmode="numeric" maxlength="4" required autocomplete="off" class="id-input">
+            </label>
+            <div class="delete-actions">
+              <button class="btn" type="button" data-action="keep-id">Keep my ID</button>
+              <button class="btn danger" type="submit">Delete for good</button>
+            </div>
+          </form>
         </div>
         <p class="error" data-error></p>
       </section>
