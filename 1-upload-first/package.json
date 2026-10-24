@@ -1,0 +1,13 @@
+{
+  "name": "vistr-word-game",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vistr: a one- or two-player word-ladder game. Starter server and client.",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node test/scoring.test.js && node test/e2e.test.js",
+    "build-dictionary": "python3 tools/build_dictionary.py /usr/share/hunspell/en_US.dic /usr/share/hunspell/en_US.aff client/words"
+  }
+}
