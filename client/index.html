@@ -51,6 +51,11 @@
       <h1 class="wordmark" aria-label="Vistr"><span>V</span><span>i</span><span>s</span><span>t</span><span>r</span></h1>
       <h2 class="signin-title">Get your Player ID</h2>
       <p class="lead">To play with others, enter your email once. New here? You'll get a Player ID. Played before? We'll find yours.</p>
+      <div class="stack" data-memoryq-box>
+        <button class="btn primary" type="button" data-action="memoryq">Sign in with Memoryq (Google or password)</button>
+        <small class="hint">Your Memoryq account is your player too - one account for memoryq.com, the Memoryq app and Vistr.</small>
+        <p class="hint center" style="margin:6px 0 0">or</p>
+      </div>
       <form class="stack" data-form="email">
         <label>Email
           <input name="email" type="email" required autocomplete="email" placeholder="you@example.com">
@@ -69,6 +74,7 @@
           <button class="btn" type="submit">Go online with my ID</button>
         </form>
       </details>
+      <label class="remember" style="display:flex;flex-direction:row;gap:8px;align-items:center;justify-content:center;margin:12px 0 0"><input type="checkbox" data-remember checked style="width:auto"> Remember me for 30 days</label>
       <p class="error" data-error></p>
       <button class="link center" type="button" data-action="standalone">Not now, stay offline</button>
     </section>

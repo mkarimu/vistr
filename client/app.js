@@ -20,7 +20,7 @@
     // Server address: one set by hand on the "can't reach" screen, else the one built into
     // the app (config.js), else the address this page came from (PC browser).
     server: saved('vistr.serverOverride') || window.VISTR_SERVER || (isNative ? 'http://localhost:3000' : location.origin),
-    token: saved('vistr.token'),
+    token: saved('vistr.token') || (() => { try { return sessionStorage.getItem('vistr.token'); } catch (_) { return null; } })(),
     // Standalone (default): solo games on this device, no server needed.
     // Live: signed in to the server, visible to others, two-player games.
     mode: saved('vistr.mode') === 'live' ? 'live' : 'standalone',
@@ -589,9 +589,12 @@
     return body !== null && (r.status === 401 || r.ok); // a Vistr server answers JSON
   }
 
-  function signedIn(r) {
-    S.token = r.token; saved('vistr.token', r.token);
-    S.player = r.player; saved('vistr.lastId', r.player.code); saved('vistr.signedOut', null);
+  // remember = false: signed in only until the browser closes, and this device does not keep the Player ID.
+  function signedIn(r, remember = true) {
+    S.token = r.token;
+    try { sessionStorage.removeItem('vistr.token'); if (!remember) sessionStorage.setItem('vistr.token', r.token); } catch (_) {}
+    saved('vistr.token', remember ? r.token : null);
+    S.player = r.player; saved('vistr.lastId', remember ? r.player.code : null); saved('vistr.signedOut', null);
     S.mode = 'live'; saved('vistr.mode', 'live');
     S.record = null;
     becomeAvailable();
@@ -608,20 +611,31 @@
       $('.signin-title + .lead').textContent = t('Tap Go online with my ID. Your points and rating are waiting.');
       $('[data-form=email]').before($('[data-has-id]'));
     }
+    const rem = () => $('[data-remember]')?.checked !== false;
+    if (isNative) $('[data-memoryq-box]').hidden = true;   // the app's built-in page cannot open memoryq.com yet
     fi.onsubmit = e => {
       e.preventDefault();
-      guard(async () => { signedIn(await api('POST', '/api/auth/id', { code: fi.code.value.trim() })); showHome(); toast(t("You're online as Player {p}.", { p: S.player.code })); });
+      guard(async () => { signedIn(await api('POST', '/api/auth/id', { code: fi.code.value.trim(), remember: rem() ? 1 : 0 }), rem()); showHome(); toast(t("You're online as Player {p}.", { p: S.player.code })); });
     };
     fe.onsubmit = e => {
       e.preventDefault();
       guard(async () => {
-        const r = await api('POST', '/api/auth/register', { email: fe.email.value.trim(), name: fe.name.value.trim() });
-        signedIn(r);
+        const r = await api('POST', '/api/auth/register', { email: fe.email.value.trim(), name: fe.name.value.trim(), remember: rem() ? 1 : 0 });
+        signedIn(r, rem());
         if (r.isNew) showWelcome(true);            // new player: show their new ID
         else { showHome(); toast(t("Welcome back, Player {p}. You're online.", { p: r.player.code })); }
       });
     };
-    app.onclick = e => { if (e.target.closest('[data-action]')?.dataset.action === 'standalone') goStandalone(); };
+    app.onclick = e => {
+      const a = e.target.closest('[data-action]')?.dataset.action;
+      if (a === 'standalone') goStandalone();
+      if (a === 'memoryq') location.href = memoryqLogin();
+    };
+  }
+  // memoryq.com signs you in (Google or password) and sends you back here with a one-time code.
+  function memoryqLogin() {
+    const back = location.origin + location.pathname;
+    return `${window.VISTR_MEMORYQ || 'https://memoryq.com'}/login?app=vistr&return=${encodeURIComponent(back)}`;
   }
 
   function showWelcome(isNew) {
@@ -1364,15 +1378,18 @@
   // ───────────────────────── boot ─────────────────────────
   function signedOut() { // Sign out button: end the session but keep the Player ID for next time
     S.token = null; S.player = null; S.record = null; saved('vistr.token', null); saved('vistr.signedOut', '1');
+    try { sessionStorage.removeItem('vistr.token'); } catch (_) {}
     goStandalone();
   }
   function forgetPlayer() { // the player deleted their ID: nothing about it stays on this device
     S.token = null; S.player = null; S.record = null;
     ['vistr.token', 'vistr.lastId', 'vistr.signedOut'].forEach(k => saved(k, null));
+    try { sessionStorage.removeItem('vistr.token'); } catch (_) {}
     goStandalone();
   }
   async function sessionEnded() { // the server no longer knows this sign-in: try the ID, else ask
     S.token = null; S.player = null; saved('vistr.token', null);
+    try { sessionStorage.removeItem('vistr.token'); } catch (_) {}
     S.events?.close(); S.events = null;
     if (await signInWithKnownId()) { showHome(); toast(t("You're online as Player {p}.", { p: S.player.code })); }
     else showSignIn();
@@ -1615,12 +1632,26 @@
   }
   $('#menu').addEventListener('click', e => { const b = e.target.closest('[data-lang]'); if (b) setLang(b.dataset.lang); });
 
+  // Back from memoryq.com with a one-time code (#mq=...): swap it for a Vistr sign-in.
+  const mqCode = (location.hash.match(/[#&]mq=([A-Za-z0-9_-]{20,})/) || [])[1];
+  if (mqCode) { try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {} }
+
   async function boot() {
     document.documentElement.lang = S.lang;
     translateDom(document.body);
     renderLangPicker();
     NativeAds.init().then(on => { if (on) Ads.showBanner(); });
     try { if (!Ads.data) Ads.load(); } catch (_) {}
+    if (mqCode) {
+      S.mode = 'live'; saved('vistr.mode', 'live');
+      try {
+        const r = await api('POST', '/api/auth/memoryq', { code: mqCode });
+        signedIn(r, r.remember !== false);
+        if (r.isNew) showWelcome(true);
+        else { showHome(); toast(t("You're online as Player {p}.", { p: r.player.code })); }
+        return;
+      } catch (e) { toast(e.message); }
+    }
     if (S.mode !== 'live') return showHome();
     app.innerHTML = `<section class="screen narrow"><p class="lead">${t('Connecting…')}</p></section>`;
     if (!(await reachable(S.server).catch(() => false))) {

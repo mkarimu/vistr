@@ -131,7 +131,20 @@ const ADMIN_KEY = process.env.ADMIN_KEY || (() => {
   try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, k + '\n'); } catch (_) {}
   return k;
 })();
-const adminOk = url => url.searchParams.get('key') === ADMIN_KEY;
+const adminOk = url => { const k = url.searchParams.get('key'); return k === ADMIN_KEY || store.adminSessionOk(k); };
+// One Memoryq account everywhere: memoryq.com hands a one-time code to the game, the game swaps it here.
+const MEMORYQ_URL = (process.env.MEMORYQ_URL || 'https://memoryq.com').replace(/\/$/, '');
+const DAY_MS = 86_400_000;
+async function memoryqExchange(code) {
+  const r = await fetch(`${MEMORYQ_URL}/api/auth/exchange`, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'code=' + encodeURIComponent(String(code || '')), signal: AbortSignal.timeout(15_000),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.username) { const e = new Error(d.error || 'Memoryq did not accept the sign-in. Try again.'); e.status = r.status === 401 ? 401 : 502; throw e; }
+  return d;
+}
+const ttlOf = remember => remember === undefined || remember === null ? undefined : (remember === true || remember === 1 || remember === '1' ? 30 * DAY_MS : DAY_MS);
 
 // Slow down anyone trying IDs one after another: 20 failed tries per address per 10 minutes.
 const idFailures = new Map(); // ip -> { count, since }
@@ -545,6 +558,26 @@ const routes = {
     if (!adminOk(url)) return send(res, 403, { error: 'Wrong admin key.' });
     send(res, 200, store.adStats());
   },
+  // Signed in on memoryq.com (password or Google): the same person is the same player everywhere.
+  'POST /api/auth/memoryq': async (req, res, { body }) => {
+    if (overLimit('memoryq', clientIp(req), 30, 60_000)) return send(res, 429, { error: 'Too many tries. Wait a minute.' });
+    let mq;
+    try { mq = await memoryqExchange(body.code); } catch (e) { return send(res, e.status || 502, { error: e.message }); }
+    const days = Number(mq.days) || 30;
+    if (body.admin) {   // admin.html: only the Memoryq super-admin
+      if (mq.role !== 'ADMIN') return send(res, 403, { error: 'Only the Memoryq super-admin can open the game admin page.' });
+      console.log(`[auth] Memoryq super-admin ${mq.username} opened the admin page`);
+      return send(res, 200, { adminKey: store.createAdminSession(mq.username, days * DAY_MS), memoryq: mq.username, days });
+    }
+    let player = store.findPlayerByMq(mq.username), isNew = false;
+    if (!player && mq.email) { const p = store.findPlayerByEmail(String(mq.email).toLowerCase()); if (p && !p.mq) player = p; }   // same email: their old player
+    if (!player) { player = store.createPlayer(mq.email ? String(mq.email).toLowerCase() : `${String(mq.username).toLowerCase()}@users.memoryq.com`); isNew = true; }
+    if (!player.mq) store.linkMq(player.id, mq.username);
+    if (!player.name) store.setName(player.id, mq.username);
+    store.noteSignIn(player.id, clientIp(req));
+    console.log(`[auth] Memoryq ${mq.username} is player ${player.code}${isNew ? ' (new)' : ''}`);
+    send(res, 200, { token: store.createSession(player.id, days * DAY_MS), player: { code: player.code, email: player.email }, isNew, memoryq: mq.username, remember: mq.remember !== false, days });
+  },
   'POST /api/auth/register': async (req, res, { body }) => {
     const email = String(body.email || '').trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return send(res, 400, { error: 'Enter a valid email address.' });
@@ -553,7 +586,7 @@ const routes = {
     if (isNew) { player = store.createPlayer(email); emailPlayerId(email, player.code); }
     if (body.name && (isNew || !player.name)) store.setName(player.id, body.name);
     store.noteSignIn(player.id, clientIp(req));
-    send(res, 200, { token: store.createSession(player.id), player: { code: player.code, email: player.email }, isNew });
+    send(res, 200, { token: store.createSession(player.id, ttlOf(body.remember)), player: { code: player.code, email: player.email }, isNew });
   },
   'POST /api/auth/id': async (req, res, { body }) => {
     const ip = clientIp(req);   // behind Caddy/nginx, the real address (not the proxy's)
@@ -562,7 +595,7 @@ const routes = {
     const player = code && store.findPlayerByCode(code);
     if (!player) { noteIdFailure(ip); return send(res, 404, { error: `There is no player ${code || 'with that ID'}. New here? Use your email to get an ID.` }); }
     store.noteSignIn(player.id, clientIp(req));
-    send(res, 200, { token: store.createSession(player.id), player: { code: player.code, email: player.email } });
+    send(res, 200, { token: store.createSession(player.id, ttlOf(body.remember)), player: { code: player.code, email: player.email } });
   },
   'POST /api/auth/signout': async (req, res, { me }) => {
     store.deleteSession((req.headers.authorization || '').slice(7));
@@ -749,7 +782,7 @@ const routes = {
     send(res, 200, { level, intensity, lang, topTen: store.topTen(me.id, level, intensity, lang), board: store.levelBoard(level, intensity, lang) });
   },
 };
-const PUBLIC = new Set(['GET /api/admin/activity', 'GET /api/admin/players', 'GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
+const PUBLIC = new Set(['GET /api/admin/activity', 'GET /api/admin/players', 'GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'POST /api/auth/memoryq', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);

@@ -110,15 +110,37 @@ for (const p of Object.values(db.players)) {
   if (!/^\d{2,4}$/.test(p.code)) { p.code = nextCode(); save('players'); }
 }
 
-function createSession(playerId) {
+// ttlMs: how long the sign-in lasts ("remember me for 30 days" = 30 days, not ticked = 1 day);
+// none (older apps) = until the player signs out.
+function createSession(playerId, ttlMs) {
   const token = require('crypto').randomBytes(32).toString('hex');
-  db.sessions[token] = { playerId, createdAt: Date.now() };
+  db.sessions[token] = { playerId, createdAt: Date.now(), ...(ttlMs ? { expires: Date.now() + ttlMs } : {}) };
   save('sessions');
   return token;
 }
 function playerForToken(token) {
   const s = token && db.sessions[token];
-  return s ? getPlayer(s.playerId) : null;
+  if (s && s.expires && s.expires < Date.now()) { delete db.sessions[token]; save('sessions'); return null; }
+  return s && s.playerId ? getPlayer(s.playerId) : null;
+}
+// One Memoryq account everywhere: a player can be linked to a Memoryq account (signed in through memoryq.com).
+function findPlayerByMq(username) {
+  const u = String(username || '').toLowerCase();
+  return u ? Object.values(db.players).find(p => (p.mq || '').toLowerCase() === u) || null : null;
+}
+function linkMq(id, username) { const p = db.players[id]; if (p) { p.mq = username; save('players'); } return p; }
+// The Memoryq super-admin opens admin.html without the ADMIN_KEY: an admin sign-in of its own.
+function createAdminSession(mqUser, ttlMs) {
+  const token = 'adm_' + require('crypto').randomBytes(32).toString('hex');
+  db.sessions[token] = { admin: true, mq: mqUser, createdAt: Date.now(), expires: Date.now() + (ttlMs || 86400000) };
+  save('sessions');
+  return token;
+}
+function adminSessionOk(token) {
+  const s = token && db.sessions[token];
+  if (!s || !s.admin) return false;
+  if (s.expires < Date.now()) { delete db.sessions[token]; save('sessions'); return false; }
+  return true;
 }
 function deleteSession(token) { delete db.sessions[token]; save('sessions'); }
 
@@ -383,4 +405,5 @@ module.exports = {
   countAd, adStats, isAvailable, setAvailable,
   findPlayerByEmail, findPlayerByCode, getPlayer, createPlayer,
   createSession, playerForToken, deleteSession, addResult, topTen, levelBoard,
+  findPlayerByMq, linkMq, createAdminSession, adminSessionOk,
 };

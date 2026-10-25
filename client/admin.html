@@ -31,17 +31,32 @@
 <header class="page-bar"><a href="./" class="page-brand">Vistr</a><span>Admin</span></header>
 <main class="page">
   <h1>Players, activity, messages and reviews</h1>
+  <p><button type="button" id="mqLogin">Sign in with Memoryq (super-admin)</button></p>
   <form id="login" class="row">
     <input type="password" name="key" placeholder="Admin key (ADMIN_KEY)" required autocomplete="current-password">
     <button>Open</button>
   </form>
-  <p class="meta" id="note">Only someone with your server's ADMIN_KEY can see this.</p>
+  <p class="meta" id="note">Only the Memoryq super-admin, or someone with your server's ADMIN_KEY, can see this.</p>
   <section id="out"></section>
 </main>
 <script>
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const when = t => new Date(t).toLocaleString();
-  let key = sessionStorage.getItem('vistr-admin') || '';
+  let key = sessionStorage.getItem('vistr-admin') || localStorage.getItem('vistr-admin-mq') || '';
+  // The Memoryq super-admin: memoryq.com signs in and sends a one-time code back (#mq=...).
+  document.getElementById('mqLogin').addEventListener('click', () => {
+    location.href = 'https://memoryq.com/login?app=vistr-admin&return=' + encodeURIComponent(location.origin + location.pathname);
+  });
+  const mq = (location.hash.match(/[#&]mq=([A-Za-z0-9_-]{20,})/) || [])[1];
+  if (mq) {
+    history.replaceState(null, '', location.pathname);
+    fetch('/api/auth/memoryq', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: mq, admin: true }) })
+      .then(r => r.json().then(d => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if (!ok) { document.getElementById('note').textContent = d.error || 'Memoryq did not sign you in.'; return; }
+        key = d.adminKey; localStorage.setItem('vistr-admin-mq', key); load();
+      });
+  }
   const get = p => fetch(p + (p.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(key)).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error); return d; }));
   async function load() {
     const out = document.getElementById('out');
