@@ -128,6 +128,16 @@ function findPlayerByMq(username) {
   const u = String(username || '').toLowerCase();
   return u ? Object.values(db.players).find(p => (p.mq || '').toLowerCase() === u) || null : null;
 }
+// The Memoryq super-admin changes a Player ID: 2-4 digits, not used by anyone, never a deleted player's number.
+function setCode(id, code) {
+  const p = db.players[id]; if (!p) return { error: 'No such player.' };
+  code = String(code || '').replace(/\D/g, '');
+  if (!/^\d{2,4}$/.test(code)) return { error: 'A Player ID is 2 to 4 digits.' };
+  if (Object.values(db.players).some(x => x.id !== id && x.code === code)) return { error: `Player ID ${code} belongs to another player.` };
+  if (((db.stats || {}).retired || []).includes(code)) return { error: `Player ID ${code} belonged to a deleted player and is not used again.` };
+  p.code = code; save('players');
+  return {};
+}
 function linkMq(id, username) { const p = db.players[id]; if (p) { p.mq = username; save('players'); } return p; }
 // The Memoryq super-admin opens admin.html without the ADMIN_KEY: an admin sign-in of its own.
 function createAdminSession(mqUser, ttlMs) {
@@ -323,7 +333,7 @@ function ratingBoard(limit = 10) {
 }
 // For the admin page: everyone, with their record and email.
 function allPlayers() {
-  return Object.values(db.players).map(p => ({ ...recordView(p.id), email: p.email, name: p.name || '', lastIp: p.lastIp || '',
+  return Object.values(db.players).map(p => ({ ...recordView(p.id), email: p.email, name: p.name || '', mq: p.mq || '', lastIp: p.lastIp || '',
     lastSeen: p.lastSeen || null, onlineMs: onlineTime(p.id) })).sort((a, b) => b.rating - a.rating || b.points - a.points);
 }
 // Players from before records existed: start their record from the games still saved.
@@ -405,5 +415,5 @@ module.exports = {
   countAd, adStats, isAvailable, setAvailable,
   findPlayerByEmail, findPlayerByCode, getPlayer, createPlayer,
   createSession, playerForToken, deleteSession, addResult, topTen, levelBoard,
-  findPlayerByMq, linkMq, createAdminSession, adminSessionOk,
+  findPlayerByMq, linkMq, createAdminSession, adminSessionOk, setCode,
 };
