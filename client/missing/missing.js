@@ -26,9 +26,10 @@
       foundOf: '{n} of {k} found', next: 'Next', hint: 'Help me', home: 'Home', typeHere: 'Type what is missing', check: 'Check',
       wellDone: 'Well done! You found them all.', showAnswers: 'Here is what was missing.', nextPicture: 'Here is the next picture.',
       goodbye: 'Great playing! See you next time.', lookHere: 'Look here.', letsPlay: "Let's play!", findIntro: "Find what's missing from {title}.",
-      youFound: 'You found {n} things!', starsN: '{n} stars', playAgain: 'Play again', choose: 'Choose player', pictureN: 'Picture {i} of {n}',
+      youFound: 'You found {n} things!', youFound1: 'You found 1 thing!', stars1: '1 star', starsN: '{n} stars', playAgain: 'Play again', choose: 'Choose player', pictureN: 'Picture {i} of {n}',
       signingIn: 'Signing in...', offline: 'No connection - the game is kept and sent later.', sound: 'Sound', timeUp: 'Time is up. Here is what was missing.',
-      loading: 'Getting the picture...', tryAgain: 'Try again', notThere: 'Not there - look again.', missing: '{k} missing', pictureOnly: 'Picture {i}',
+      loading: 'Getting the picture...', tryAgain: 'Try again', notThere: 'Not there - look again.', missing: '{k} missing', pictureOnly: 'Picture {i}', pause: 'Pause', resume: 'Continue', paused: 'Paused', restart: 'Start again', stop: 'Stop',
+      pausedNote: 'Take a break. Press Continue when you are ready.',
     },
     sw: {
       title: 'Tafuta Kinachokosekana', tagline: 'Picha mbili. Kuna kitu kinachokosekana kwenye picha ya pili. Je, unaweza kukipata?',
@@ -39,9 +40,10 @@
       foundOf: '{n} kati ya {k} vimepatikana', next: 'Inayofuata', hint: 'Nisaidie', home: 'Nyumbani', typeHere: 'Andika kinachokosekana', check: 'Hakiki',
       wellDone: 'Hongera! Umevipata vyote.', showAnswers: 'Hivi ndivyo vilivyokosekana.', nextPicture: 'Hii ni picha inayofuata.',
       goodbye: 'Umecheza vizuri! Tuonane tena.', lookHere: 'Angalia hapa.', letsPlay: 'Tucheze!', findIntro: 'Tafuta kinachokosekana kwenye {title}.',
-      youFound: 'Umepata vitu {n}!', starsN: 'nyota {n}', playAgain: 'Cheza tena', choose: 'Chagua mchezaji', pictureN: 'Picha {i} kati ya {n}',
+      youFound: 'Umepata vitu {n}!', youFound1: 'Umepata kitu 1!', stars1: 'nyota 1', starsN: 'nyota {n}', playAgain: 'Cheza tena', choose: 'Chagua mchezaji', pictureN: 'Picha {i} kati ya {n}',
       signingIn: 'Inaingia...', offline: 'Hakuna mtandao - mchezo umehifadhiwa na utatumwa baadaye.', sound: 'Sauti', timeUp: 'Muda umekwisha. Hivi ndivyo vilivyokosekana.',
-      loading: 'Inapakia picha...', tryAgain: 'Jaribu tena', notThere: 'Si hapo - angalia tena.', missing: '{k} vinakosekana', pictureOnly: 'Picha {i}',
+      loading: 'Inapakia picha...', tryAgain: 'Jaribu tena', notThere: 'Si hapo - angalia tena.', missing: '{k} vinakosekana', pictureOnly: 'Picha {i}', pause: 'Pumzika', resume: 'Endelea', paused: 'Tumepumzika', restart: 'Anza upya', stop: 'Maliza',
+      pausedNote: 'Pumzika kidogo. Bonyeza Endelea ukiwa tayari.',
     },
   };
   let lang = /^sw\b/i.test(navigator.language || '') ? 'sw' : 'en';
@@ -243,7 +245,18 @@
     el.querySelector('button').onclick = retry;
   }
 
-  $('#homeBtn').onclick = () => { if (S.session) endSession(true); else showPlayers(); };
+  $('#homeBtn').onclick = () => { if (S.session) leave('home'); else showPlayers(); };
+
+  /** Stop (the summary of what was played) or Home (straight back to the players). A picture half-done is kept as played. */
+  function leave(how) {
+    if (R && !R.saved && R.found.length) {   // also a picture just finished (still showing "Well done!")
+      R.saved = true;
+      Outbox.send({ path: '/api/missing/round', json: true, body: { session: S.session, id: R.id, picture: R.pic.id, version: R.pic.version || 1, hidden: R.hidden,
+        started: R.started, passed: R.done ? !!R.passed : true, misses: R.misses, found: R.found.map(f => ({ part: f.part.id, ms: f.ms, hint: f.hint, how: f.how })) } });
+      S.done++;
+    }
+    endSession(how);
+  }
 
   // ---------------------------------------------------------------- a session
   function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
@@ -275,14 +288,15 @@
     playPicture(pic, first);
   }
 
-  async function endSession(early) {
+  async function endSession(how) {
     const s = S.session;
     stopRound();
     S.session = null;
     if (s) Outbox.send({ path: '/api/missing/session/end', body: { session: s } });
-    if (early && S.done === 0) return showPlayers();
+    const early = !!how;
+    if (how === 'home' || (early && S.done === 0 && S.found === 0)) return showPlayers();
     const el = mount('<div class="summary"><div class="st" aria-hidden="true">' + '\u2B50'.repeat(Math.min(10, Math.max(1, S.stars))) + '</div></div><h1>'
-      + esc(t('youFound', { n: S.found })) + '</h1><p class="lead">' + esc(t('starsN', { n: S.stars })) + '</p><div class="row">'
+      + esc(S.found === 1 ? t('youFound1') : t('youFound', { n: S.found })) + '</h1><p class="lead">' + esc(S.stars === 1 ? t('stars1') : t('starsN', { n: S.stars })) + '</p><div class="row">'
       + '<button class="btn primary big" type="button" data-go="again" data-t="playAgain"></button><button class="btn" type="button" data-go="players" data-t="choose"></button></div>', 'center');
     if (!early) { sounds.cheer(); confetti(); say(t('goodbye')); }
     el.onclick = e => {
@@ -357,22 +371,29 @@
     R = null;
   }
 
-  async function playPicture(pic, first) {
+  async function playPicture(pic, first, keep) {
     stopRound();
     const el = mount('<p class="lead" data-t="loading"></p>', 'center');
     let text;
     try { text = await loadSvg(pic.id); } catch (e) { S.done++; return S.done > S.order.length ? showError(e.message, showPlayers) : nextPicture(); }
     if (!el.isConnected) return;
     const left = build(text, 'L-'), right = build(text, 'R-');
-    const hidden = choose(pic);
+    const hidden = keep ? (pic.parts || []).filter(p => keep.indexOf(p.id) >= 0) : choose(pic);
     const typing = S.player.settings && S.player.settings.typing === '1' && S.params.level >= 3;
     const scan = S.player.settings && S.player.settings.scan === '1';
-    const screen = mount('<div class="ghead"><span class="count"></span><div class="chips"></div><span class="stars">\u2B50 <b></b></span></div>'
+    const screen = mount('<div class="ghead"><span class="count"></span><div class="chips"></div><span class="stars">\u2B50 <b></b></span>'
+      + '<div class="ctrl" role="group">'
+      + '<button type="button" class="cbtn" data-go="pause"><span aria-hidden="true">\u23F8</span><span class="cl" data-t="pause"></span></button>'
+      + '<button type="button" class="cbtn" data-go="restart"><span aria-hidden="true">\u21BA</span><span class="cl" data-t="restart"></span></button>'
+      + '<button type="button" class="cbtn" data-go="stop"><span aria-hidden="true">\u23F9</span><span class="cl" data-t="stop"></span></button>'
+      + '<button type="button" class="cbtn" data-go="home"><span aria-hidden="true">\u{1F3E0}</span><span class="cl" data-t="home"></span></button>'
+      + '</div></div>'
       + (S.params.timer ? '<div class="timer"><i></i></div>' : '')
       + '<div class="stage"><div class="panel look"><div class="lbl" data-t="look"></div><div class="pic"></div></div>'
       + '<div class="panel find"><div class="lbl" data-t="findHere"></div><div class="pic" tabindex="0"></div></div></div>'
       + '<div class="gfoot">' + (typing ? '<form class="typebox"><input type="text" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn small" type="submit" data-t="check"></button></form>' : '')
       + '<button class="btn small" type="button" data-go="hint" data-t="hint"></button><button class="btn small" type="button" data-go="next" data-t="next"></button></div>', 'game');
+    $('#homeBtn').hidden = true;   // the game has its own Home button
     $('.look .pic', screen).appendChild(left.svg);
     const findBox = $('.find .pic', screen);
     findBox.appendChild(right.svg);
@@ -399,7 +420,7 @@
     });
     findBox.addEventListener('pointerleave', () => { ring.style.display = 'none'; });
     findBox.addEventListener('click', e => {
-      if (!R || R.done || scan) return;
+      if (!R || R.done || R.paused || scan) return;
       const p = toSvg(e.clientX, e.clientY);
       ring.setAttribute('cx', p.x); ring.setAttribute('cy', p.y); ring.setAttribute('r', ringR()); ring.style.display = '';
       const hit = hitAt(p);
@@ -407,6 +428,11 @@
     });
     screen.querySelector('[data-go=hint]').onclick = () => giveHint(true);
     screen.querySelector('[data-go=next]').onclick = () => pass(false);
+    screen.querySelector('[data-go=pause]').onclick = () => pauseGame();
+    screen.querySelector('[data-go=restart]').onclick = () => restartPicture();
+    screen.querySelector('[data-go=stop]').onclick = () => leave('stop');
+    screen.querySelector('[data-go=home]').onclick = () => leave('home');
+    $$('.ctrl .cbtn', screen).forEach(b => { const l = b.querySelector('.cl'); b.title = l.textContent; b.setAttribute('aria-label', l.textContent); });
     if (typing) {
       $('.typebox', screen).onsubmit = e => {
         e.preventDefault();
@@ -420,9 +446,12 @@
     window.addEventListener('keydown', R.keys);
     R.tick = setInterval(tick, 500);
     if (S.params.timer) R.limit = (S.params.level >= 5 ? 60 : 90) * 1000;
-    if (scan) { startScan(); findBox.focus({ preventScroll: true }); }
+    if (scan) {
+      findBox.addEventListener('pointerup', e => { if (!R || R.paused) return; e.preventDefault(); scanSelect(); });
+      startScan(); findBox.focus({ preventScroll: true });
+    }
     const title = (pic.title && (pic.title[lang] || pic.title.en)) || '';
-    sayAll(first ? [t('letsPlay'), t('findIntro', { title })] : [t('nextPicture'), t('findIntro', { title })]);
+    sayAll(keep ? [t('findIntro', { title })] : first ? [t('letsPlay'), t('findIntro', { title })] : [t('nextPicture'), t('findIntro', { title })]);
   }
 
   function el2(name, attrs) {
@@ -560,8 +589,48 @@
     if (box && !reduced) { box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake'); }
   }
 
-  function tick() {
+  /** Pause: the clock stops (hints, timer, session length), nothing can be tapped; Continue goes on where it was. */
+  function pauseGame() {
+    if (!R || R.done || R.paused) return;
+    R.paused = true; R.pausedAt = Date.now();
+    clearTimeout(R.scanTimer);
+    try { if (speaking) { speaking.pause(); speaking = null; } window.speechSynthesis && speechSynthesis.cancel(); } catch (e) { /* nothing */ }
+    const c = document.createElement('div');
+    c.className = 'cheer pause';
+    c.innerHTML = '<div class="box"><div class="big">\u23F8 ' + esc(t('paused')) + '</div><p class="lead">' + esc(t('pausedNote')) + '</p>'
+      + '<div class="row"><button class="btn primary big" type="button" data-go="resume">' + esc(t('resume')) + '</button></div>'
+      + '<div class="row" style="margin-top:12px"><button class="btn small" type="button" data-go="restart">' + esc(t('restart')) + '</button>'
+      + '<button class="btn small" type="button" data-go="stop">' + esc(t('stop')) + '</button><button class="btn small" type="button" data-go="home">' + esc(t('home')) + '</button></div></div>';
+    document.body.appendChild(c);
+    c.onclick = e => {
+      const g = e.target.closest('[data-go]'); if (!g) return;
+      const a = g.dataset.go;
+      if (a === 'resume') resumeGame();
+      if (a === 'restart') { resumeGame(); restartPicture(); }
+      if (a === 'stop') { c.remove(); leave('stop'); }
+      if (a === 'home') { c.remove(); leave('home'); }
+    };
+    c.querySelector('[data-go=resume]').focus();
+  }
+  function resumeGame() {
+    if (!R || !R.paused) return;
+    const shift = Date.now() - R.pausedAt;
+    R.started += shift; R.lastFind += shift; S.startedAt += shift;
+    R.paused = false;
+    $$('.cheer.pause').forEach(n => n.remove());
+    if (S.player.settings && S.player.settings.scan === '1') startScan();
+    const box = $('.find .pic'); if (box) box.focus({ preventScroll: true });
+  }
+  /** Start this picture again: the same things missing, found ones hidden again, their stars taken back. */
+  function restartPicture() {
     if (!R || R.done) return;
+    S.stars -= R.found.length; S.found -= R.found.length;
+    const pic = R.pic, keep = R.hidden.slice();
+    playPicture(pic, false, keep);
+  }
+
+  function tick() {
+    if (!R || R.done || R.paused) return;
     const since = (Date.now() - R.lastFind) / 1000, h = S.params.hints || [0, 0, 0];
     if (h[0] > 0 && R.todo.length) {
       const target = R.todo[0];
@@ -666,8 +735,14 @@
   }
   function onKey(e, scan) {
     if (!R || R.done) return;
-    if (e.target && /input|textarea/i.test(e.target.tagName)) return;
     const k = e.key;
+    if (R.paused) {
+      if (k === 'p' || k === 'P' || k === 'Escape') { e.preventDefault(); resumeGame(); }
+      return;   // the pause box's own buttons work with Tab / Enter
+    }
+    if (k === 'Escape') { e.preventDefault(); return pauseGame(); }
+    if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+    if (k === 'p' || k === 'P') { e.preventDefault(); return pauseGame(); }
     if (k === 'n' || k === 'N') { e.preventDefault(); return pass(false); }
     if (k === 'h' || k === 'H') { e.preventDefault(); return giveHint(); }
     if (scan) {
@@ -699,15 +774,13 @@
     const speed = Math.max(800, Number(S.player.settings && S.player.settings.scanSpeed) || 2000);
     R.scanPass = 0; R.scanRegion = null; R.scanI = -1;
     const step = () => {
-      if (!R || R.done) return;
+      if (!R || R.done || R.paused) return;
       const n = R.scanPass === 0 ? 3 : 2;
       R.scanI = (R.scanI + 1) % (n * n);
       drawFocus(area(R.scanI, n, R.scanRegion));
       R.scanTimer = setTimeout(step, speed);
     };
     step();
-    const box = $('.find .pic');
-    box.addEventListener('pointerup', e => { e.preventDefault(); scanSelect(); });
   }
   function scanSelect() {
     if (!R || R.done || R.scanI < 0) return;

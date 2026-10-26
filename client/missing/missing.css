@@ -107,6 +107,13 @@ h2 { font-size: 26px; margin: 0; }
 @keyframes back { from { opacity: 0; } to { opacity: 1; } }
 @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-7px); } 75% { transform: translateX(7px); } }
 
+/* game controls: Pause, Start again, Stop, Home */
+.ctrl { display: flex; gap: 6px; margin-left: auto; }
+.cbtn { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 6px 12px; border-radius: 22px; border: 2px solid var(--line); background: #fff; font-size: 16px; font-weight: 600; }
+.cbtn:hover { border-color: var(--accent); }
+.cbtn [aria-hidden] { font-size: 18px; line-height: 1; }
+.cheer.pause .box { max-width: 92vw; }
+@media (max-width: 760px) { .cbtn .cl { display: none; } .cbtn { padding: 6px 10px; } .ctrl { order: -1; width: 100%; justify-content: flex-end; } }
 /* well done */
 .cheer { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(255, 248, 236, .82); z-index: 20; }
 .cheer .box { background: #fff; border-radius: 28px; padding: 28px 40px; text-align: center; border: 3px solid var(--star); box-shadow: 0 10px 30px rgba(0,0,0,.08); }
