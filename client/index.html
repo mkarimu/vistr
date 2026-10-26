@@ -49,13 +49,14 @@
   <template id="t-signin">
     <section class="screen narrow">
       <h1 class="wordmark" aria-label="Vistr"><span>V</span><span>i</span><span>s</span><span>t</span><span>r</span></h1>
-      <h2 class="signin-title">Get your Player ID</h2>
-      <p class="lead">To play with others, enter your email once. New here? You'll get a Player ID. Played before? We'll find yours.</p>
+      <h2 class="signin-title">Play online</h2>
+      <p class="lead">New here? Sign in with a free Memoryq account - one account for all Vistr games. Played before? Use your email or Player ID.</p>
       <div class="stack" data-memoryq-box>
         <button class="btn primary" type="button" data-action="memoryq">Sign in with Memoryq (Google or password)</button>
         <small class="hint">Your Memoryq account is your player too - one account for memoryq.com, the Memoryq app and Vistr.</small>
-        <p class="hint center" style="margin:6px 0 0">or</p>
       </div>
+      <details class="advanced" data-has-email>
+      <summary>I played before with my email</summary>
       <form class="stack" data-form="email">
         <label>Email
           <input name="email" type="email" required autocomplete="email" placeholder="you@example.com">
@@ -63,8 +64,9 @@
         <label>Your name <small>(optional; other players only see your ID)</small>
           <input name="name" type="text" maxlength="40" autocomplete="name" placeholder="e.g. Amina">
         </label>
-        <button class="btn primary" type="submit">Get my Player ID</button>
+        <button class="btn primary" type="submit">Find my Player ID</button>
       </form>
+      </details>
       <details class="advanced" data-has-id>
         <summary>I have a Player ID</summary>
         <form class="stack" data-form="id">
@@ -91,6 +93,7 @@
 
   <template id="t-home">
     <section class="screen">
+      <a class="games-card" href="missing/" data-games-card><span class="gc-ic" aria-hidden="true">&#128269;</span><span class="gc-tx"><b>Spot What's Missing</b><small>New: a calm picture game - find what's missing</small></span><span class="gc-go" aria-hidden="true">&#8250;</span></a>
       <h2>Word length</h2>
       <div class="levels" role="radiogroup" aria-label="Word length">
         <button class="level" role="radio" data-level="4"><b>4</b><span>letters</span></button>
@@ -154,6 +157,10 @@
             </details>
           </section>
 
+          <div class="link-card" data-link-card hidden>
+            <p><b>One account for all Vistr games</b><br><small>Link your Player ID to a free Memoryq account. Your points and rating stay with you.</small></p>
+            <button class="btn" type="button" data-action="link-mq">Link to Memoryq</button>
+          </div>
           <h2 id="together-title">Play with someone</h2>
           <div class="lobby" data-lobby aria-live="polite">
             <p><span class="lobby-label">Online <b data-online-count>0</b></span><span class="lobby-ids" data-online-ids></span></p>
@@ -283,6 +290,7 @@
       <p class="lang-note" data-lang-note hidden></p>
     </div>
     <nav class="menu-list">
+      <a class="menu-game" href="missing/"><span class="ic" aria-hidden="true">&#128269;</span>Spot What's Missing (picture game)</a>
       <button type="button" data-page="about"><span class="ic" aria-hidden="true">★</span>About Vistr</button>
       <button type="button" data-page="how-to"><span class="ic" aria-hidden="true">?</span>How to play</button>
       <button type="button" data-page="reviews"><span class="ic" aria-hidden="true">✪</span>Reviews</button>

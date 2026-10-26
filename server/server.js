@@ -454,13 +454,16 @@ function auth(req, url) {
   const token = h.startsWith('Bearer ') ? h.slice(7) : url.searchParams.get('token');
   return store.playerForToken(token);
 }
-const MIME = { '.html': 'text/html; charset=utf-8', '.txt': 'text/plain; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.txt': 'text/plain; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.mp3': 'audio/mpeg', '.pdf': 'application/pdf' };
 
 function serveStatic(req, res, url) {
   let rel = decodeURIComponent(url.pathname);
-  if (rel === '/') rel = '/index.html';
+  if (rel.endsWith('/')) rel += 'index.html';   // / -> the word game, /missing/ -> Spot What's Missing
   const file = path.normalize(path.join(CLIENT_DIR, rel));
   if (!file.startsWith(CLIENT_DIR)) { res.writeHead(403); return res.end(); }
+  if (!path.extname(file) && fs.existsSync(path.join(file, 'index.html'))) {   // /missing -> /missing/ (its pages use relative links)
+    res.writeHead(301, { Location: url.pathname + '/' + url.search }); return res.end();
+  }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end('Not found'); }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
@@ -559,11 +562,19 @@ const routes = {
     send(res, 200, store.adStats());
   },
   // Signed in on memoryq.com (password or Google): the same person is the same player everywhere.
-  'POST /api/auth/memoryq': async (req, res, { body }) => {
+  'POST /api/auth/memoryq': async (req, res, { me, body }) => {
     if (overLimit('memoryq', clientIp(req), 30, 60_000)) return send(res, 429, { error: 'Too many tries. Wait a minute.' });
     let mq;
     try { mq = await memoryqExchange(body.code); } catch (e) { return send(res, e.status || 502, { error: e.message }); }
     const days = Number(mq.days) || 30;
+    if (body.link) {   // a player who signed in with their ID or email links it to their Memoryq account
+      if (!me) return send(res, 401, { error: 'Sign in with your Player ID first.' });
+      const other = store.findPlayerByMq(mq.username);
+      if (other && other.id !== me.id) return send(res, 409, { error: `That Memoryq account already has Vistr player ${other.code}. Sign out and use "Sign in with Memoryq" to play as that player.` });
+      store.linkMq(me.id, mq.username);
+      console.log(`[auth] player ${me.code} linked to Memoryq ${mq.username}`);
+      return send(res, 200, { linked: mq.username, player: { code: me.code, email: me.email, mq: mq.username } });
+    }
     if (body.admin) {   // admin.html: only the Memoryq super-admin
       if (mq.role !== 'ADMIN') return send(res, 403, { error: 'Only the Memoryq super-admin can open the game admin page.' });
       console.log(`[auth] Memoryq super-admin ${mq.username} opened the admin page`);
@@ -583,10 +594,15 @@ const routes = {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return send(res, 400, { error: 'Enter a valid email address.' });
     let player = store.findPlayerByEmail(email);
     const isNew = !player;
+    // One account everywhere: new players join with a Memoryq account. Players who already have an ID still sign in
+    // with their email. The Android app keeps email sign-up until it can open memoryq.com (VISTR_OPEN_SIGNUP=1: everyone).
+    if (isNew && !body.native && process.env.VISTR_OPEN_SIGNUP !== '1') {
+      return send(res, 403, { error: 'New players join with a free Memoryq account - one account for all Vistr games. Tap "Sign in with Memoryq".', memoryq: true });
+    }
     if (isNew) { player = store.createPlayer(email); emailPlayerId(email, player.code); }
     if (body.name && (isNew || !player.name)) store.setName(player.id, body.name);
     store.noteSignIn(player.id, clientIp(req));
-    send(res, 200, { token: store.createSession(player.id, ttlOf(body.remember)), player: { code: player.code, email: player.email }, isNew });
+    send(res, 200, { token: store.createSession(player.id, ttlOf(body.remember)), player: { code: player.code, email: player.email, mq: player.mq || '' }, isNew });
   },
   'POST /api/auth/id': async (req, res, { body }) => {
     const ip = clientIp(req);   // behind Caddy/nginx, the real address (not the proxy's)
@@ -595,7 +611,7 @@ const routes = {
     const player = code && store.findPlayerByCode(code);
     if (!player) { noteIdFailure(ip); return send(res, 404, { error: `There is no player ${code || 'with that ID'}. New here? Use your email to get an ID.` }); }
     store.noteSignIn(player.id, clientIp(req));
-    send(res, 200, { token: store.createSession(player.id, ttlOf(body.remember)), player: { code: player.code, email: player.email } });
+    send(res, 200, { token: store.createSession(player.id, ttlOf(body.remember)), player: { code: player.code, email: player.email, mq: player.mq || '' } });
   },
   'POST /api/auth/signout': async (req, res, { me }) => {
     store.deleteSession((req.headers.authorization || '').slice(7));
@@ -645,7 +661,7 @@ const routes = {
   'GET /api/me': async (req, res, { me }) => {
     const mid = activeMatch.get(me.id);
     const m = mid && matches.get(mid);
-    send(res, 200, { player: { code: me.code, email: me.email, available: store.isAvailable(me.id) }, match: m ? matchView(m, me.id) : null, me: m ? m.players[me.id] && { current: m.players[me.id].current, chain: m.players[me.id].chain, lastSeq: m.players[me.id].lastSeq, streak: m.players[me.id].streak } : null });
+    send(res, 200, { player: { code: me.code, email: me.email, mq: me.mq || '', available: store.isAvailable(me.id) }, match: m ? matchView(m, me.id) : null, me: m ? m.players[me.id] && { current: m.players[me.id].current, chain: m.players[me.id].chain, lastSeq: m.players[me.id].lastSeq, streak: m.players[me.id].streak } : null });
   },
   'GET /api/events': async (req, res, { me, url }) => {
     if (url.searchParams.get('lang')) playerLang.set(me.id, langFrom(url.searchParams.get('lang')));

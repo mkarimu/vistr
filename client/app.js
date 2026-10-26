@@ -609,7 +609,7 @@
       fi.code.value = last; $('[data-has-id]').open = true;
       $('.signin-title').textContent = t('Welcome back, Player {p}', { p: last });
       $('.signin-title + .lead').textContent = t('Tap Go online with my ID. Your points and rating are waiting.');
-      $('[data-form=email]').before($('[data-has-id]'));
+      $('[data-has-email]').before($('[data-has-id]'));
     }
     const rem = () => $('[data-remember]')?.checked !== false;
     if (isNative) $('[data-memoryq-box]').hidden = true;   // the app's built-in page cannot open memoryq.com yet
@@ -620,7 +620,7 @@
     fe.onsubmit = e => {
       e.preventDefault();
       guard(async () => {
-        const r = await api('POST', '/api/auth/register', { email: fe.email.value.trim(), name: fe.name.value.trim(), remember: rem() ? 1 : 0 });
+        const r = await api('POST', '/api/auth/register', { email: fe.email.value.trim(), name: fe.name.value.trim(), remember: rem() ? 1 : 0, native: isNative ? 1 : 0 });
         signedIn(r, rem());
         if (r.isNew) showWelcome(true);            // new player: show their new ID
         else { showHome(); toast(t("Welcome back, Player {p}. You're online.", { p: r.player.code })); }
@@ -633,8 +633,8 @@
     };
   }
   // memoryq.com signs you in (Google or password) and sends you back here with a one-time code.
-  function memoryqLogin() {
-    const back = location.origin + location.pathname;
+  function memoryqLogin(link) {
+    const back = location.origin + location.pathname + (link ? '?link=1' : '');
     return `${window.VISTR_MEMORYQ || 'https://memoryq.com'}/login?app=vistr&return=${encodeURIComponent(back)}`;
   }
 
@@ -684,7 +684,10 @@
       if (a === 'edit-name') { const nf = $('[data-form=name]'); nf.hidden = false; nf.name.value = S.record?.record?.name || ''; nf.name.focus(); }
       if (a === 'delete-id') { const df = $('[data-form=delete]'); df.hidden = false; btn.hidden = true; df.code.focus(); }
       if (a === 'keep-id') { const df = $('[data-form=delete]'); df.hidden = true; df.reset(); $('[data-action=delete-id]').hidden = false; }
+      if (a === 'link-mq') location.href = memoryqLogin(true);
     };
+    const lc = $('[data-link-card]');   // a Player ID not yet linked to a Memoryq account: invite to link it
+    if (lc) lc.hidden = !(live && S.player && S.player.mq === '' && !isNative);
     const nf = $('[data-form=name]');
     nf.onsubmit = e => {
       e.preventDefault();
@@ -1642,7 +1645,14 @@
     renderLangPicker();
     NativeAds.init().then(on => { if (on) Ads.showBanner(); });
     try { if (!Ads.data) Ads.load(); } catch (_) {}
-    if (mqCode) {
+    if (mqCode && /[?&]link=1/.test(location.search) && S.token) {   // back from memoryq.com to link this Player ID
+      try { history.replaceState(null, '', location.pathname); } catch (_) {}
+      try {
+        const r = await api('POST', '/api/auth/memoryq', { code: mqCode, link: true });
+        if (S.player) S.player.mq = r.linked;
+        toast(t('Linked to your Memoryq account {u}. One account for all Vistr games.', { u: r.linked }));
+      } catch (e) { toast(e.message); }
+    } else if (mqCode) {
       S.mode = 'live'; saved('vistr.mode', 'live');
       try {
         const r = await api('POST', '/api/auth/memoryq', { code: mqCode });

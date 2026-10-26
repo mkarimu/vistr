@@ -811,3 +811,19 @@ dialog.reader[open] { display: flex; }
 .name-form { display: flex; gap: 8px; margin-top: 8px; }
 .name-form input { flex: 1; min-width: 0; font: inherit; color: var(--cream); background: rgba(0, 0, 0, 0.25); border: 2px solid var(--line); border-radius: 12px; padding: 8px 10px; }
 .stack label small { font-weight: 400; color: var(--mute); font-size: 0.82rem; }
+
+/* Vistr is the home of the games: a card for Spot What's Missing on the home screen and in the menu */
+.games-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius); text-decoration: none; color: var(--cream);
+  background: rgba(255, 255, 255, 0.08); border: 2px solid var(--line); }
+.games-card:hover, .games-card:focus-visible { border-color: var(--sky); background: rgba(255, 255, 255, 0.13); }
+.games-card .gc-ic { flex: none; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; font-size: 1.4rem; background: var(--sky); }
+.games-card .gc-tx { flex: 1; display: flex; flex-direction: column; line-height: 1.25; }
+.games-card small { color: var(--mute); }
+.games-card .gc-go { font-size: 1.8rem; color: var(--mute); }
+.menu-list a.menu-game { display: flex; align-items: center; gap: 14px; padding: 14px; text-decoration: none; font: inherit; font-weight: 600; font-size: 1.05rem;
+  color: var(--cream); background: rgba(69, 200, 245, 0.14); border: 2px solid transparent; border-radius: 16px; }
+.menu-list a.menu-game:hover, .menu-list a.menu-game:focus-visible { border-color: var(--sky); }
+.link-card { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; padding: 12px 14px; border-radius: var(--radius);
+  border: 2px dashed var(--sky); background: rgba(69, 200, 245, 0.08); }
+.link-card p { margin: 0; flex: 1 1 220px; }
+.link-card small { color: var(--mute); }

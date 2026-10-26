@@ -4,161 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>Vistr admin</title>
-  <link rel="stylesheet" href="pages.css">
+  <title>Vistr admin - now on memoryq.com</title>
+  <meta http-equiv="refresh" content="2; url=https://memoryq.com/admin#games/vistr">
   <style>
-    .card { padding: 12px 14px; margin: 10px 0; border-radius: 14px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.14); }
-    .card p { margin: 6px 0; white-space: pre-wrap; }
-    .card small { color: #c7b8ee; }
-    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-    button, input { font: inherit; border-radius: 10px; padding: 8px 12px; }
-    button { border: none; font-weight: 700; cursor: pointer; background: #45c8f5; color: #2a1450; }
-    button.warn { background: #ff7a7a; } button.ok { background: #a8e44a; }
-    input { color: #fff7ec; background: rgba(0,0,0,0.25); border: 2px solid rgba(255,255,255,0.2); }
-    .tag { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; color: #2a1450; background: #ffd23f; }
-    .tag.hidden { background: #ff7a7a; } .tag.shown { background: #a8e44a; }
-    .wide { overflow-x: auto; margin: 10px 0; border-radius: 14px; border: 1px solid rgba(255,255,255,0.14); }
-    .wide table { margin: 0; min-width: 760px; font-size: 0.9rem; }
-    .wide th { text-align: left; padding: 8px 6px; color: #c7b8ee; font-weight: 600; position: sticky; top: 0; background: #221f6b; cursor: pointer; white-space: nowrap; }
-    .wide td { text-align: left; font-weight: 400; white-space: nowrap; }
-    .wide td.n, .wide th.n { text-align: right; font-variant-numeric: tabular-nums; }
-    .ids b { display: inline-block; margin: 2px 4px 2px 0; padding: 0 8px; border-radius: 999px; background: rgba(255,255,255,0.1); }
-    .ids.avail b { background: #a8e44a; color: #2a1450; }
-    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #a8e44a; margin-right: 4px; }
+    body { font-family: system-ui, sans-serif; background: #171b58; color: #fff7ec; display: grid; place-items: center; min-height: 100vh; margin: 0; text-align: center; padding: 16px; }
+    a { color: #ffd23f; font-weight: 600; }
   </style>
 </head>
 <body>
-<header class="page-bar"><a href="./" class="page-brand">Vistr</a><span>Admin</span></header>
-<main class="page">
-  <h1>Players, activity, messages and reviews</h1>
-  <p><button type="button" id="mqLogin">Sign in with Memoryq (super-admin)</button></p>
-  <form id="login" class="row">
-    <input type="password" name="key" placeholder="Admin key (ADMIN_KEY)" required autocomplete="current-password">
-    <button>Open</button>
-  </form>
-  <p class="meta" id="note">Only the Memoryq super-admin, or someone with your server's ADMIN_KEY, can see this.</p>
-  <section id="out"></section>
-</main>
-<script>
-  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const when = t => new Date(t).toLocaleString();
-  let key = sessionStorage.getItem('vistr-admin') || localStorage.getItem('vistr-admin-mq') || '';
-  // The Memoryq super-admin: memoryq.com signs in and sends a one-time code back (#mq=...).
-  document.getElementById('mqLogin').addEventListener('click', () => {
-    location.href = 'https://memoryq.com/login?app=vistr-admin&return=' + encodeURIComponent(location.origin + location.pathname);
-  });
-  const mq = (location.hash.match(/[#&]mq=([A-Za-z0-9_-]{20,})/) || [])[1];
-  if (mq) {
-    history.replaceState(null, '', location.pathname);
-    fetch('/api/auth/memoryq', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: mq, admin: true }) })
-      .then(r => r.json().then(d => ({ ok: r.ok, d })))
-      .then(({ ok, d }) => {
-        if (!ok) { document.getElementById('note').textContent = d.error || 'Memoryq did not sign you in.'; return; }
-        key = d.adminKey; localStorage.setItem('vistr-admin-mq', key); load();
-      });
-  }
-  const get = p => fetch(p + (p.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(key)).then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error); return d; }));
-  async function load() {
-    const out = document.getElementById('out');
-    try {
-      const [{ messages }, { reviews }, st, pl, act] = await Promise.all([get('/api/contact/messages'), get('/api/reviews/all'), get('/api/stats'),
-        get('/api/admin/players').catch(() => null), get('/api/admin/activity?player=' + encodeURIComponent(actFilter)).catch(() => null)]);
-      players = pl; visits = act?.visits || null;
-      const days = Object.entries(st.byDay || {}).sort().slice(-14).reverse();
-      sessionStorage.setItem('vistr-admin', key);
-      document.getElementById('note').textContent = `${messages.length} message(s), ${reviews.length} review(s).`;
-      out.innerHTML = playersHtml() + activityHtml() + `<h2>Games played</h2><div class="card">
-          <b style="font-size:1.6rem">${st.total.toLocaleString()}</b> in total · <b>${st.today}</b> today<br>
-          <small>Online solo ${st.solo} · two-player ${st.duo} · offline ${st.offline} · ${st.players} registered players</small>
-          ${days.length ? `<table>${days.map(([d, n]) => `<tr><td>${d}</td><td>${n}</td></tr>`).join('')}</table>` : ''}</div>
-        <h2>Messages</h2>${messages.map(m => `<div class="card">
-          <b>${esc(m.topic)}</b> <small>${when(m.at)}</small><br>
-          <small>${esc(m.name || '(no name)')} &lt;<a href="mailto:${esc(m.email)}">${esc(m.email)}</a>&gt;${m.playerCode ? ` · Player ${esc(m.playerCode)}` : ''} · ${esc(m.app || '')}</small>
-          <p>${esc(m.message)}</p>
-          <div class="row"><a href="mailto:${esc(m.email)}?subject=${encodeURIComponent('Re: Vistr ' + m.topic)}"><button type="button">Reply by email</button></a>
-          <button class="warn" data-del="${esc(m.id)}">Delete</button></div></div>`).join('') || '<p class="meta">No messages.</p>'}
-        <h2>Reviews</h2>${reviews.map(r => `<div class="card">
-          <span class="tag ${esc(r.status)}">${esc(r.status)}</span> <b>${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</b> Player ${esc(r.playerCode)} <small>${when(r.updatedAt)}</small>
-          ${r.text ? `<p>${esc(r.text)}</p>` : ''}
-          <div class="row">${r.status !== 'shown' ? `<button class="ok" data-review="${esc(r.playerCode)}" data-status="shown">Show</button>` : ''}
-          ${r.status !== 'hidden' ? `<button class="warn" data-review="${esc(r.playerCode)}" data-status="hidden">Hide</button>` : ''}</div></div>`).join('') || '<p class="meta">No reviews.</p>'}`;
-    } catch (e) { out.innerHTML = `<p class="meta">${esc(e.message)}</p>`; }
-  }
-  // ── Players: who is on now, and everyone's record (for grading) ──
-  let players = null, sortBy = 'rating', sortDir = -1;
-  const COLS = [['playerCode', 'ID', 1], ['name', 'Name'], ['rank', 'Rank'], ['rating', 'Rating', 1], ['points', 'Total points', 1], ['games', 'Games', 1],
-    ['best', 'Best', 1], ['average', 'Avg', 1], ['wins', 'W-L-D', 1], ['words', 'Words', 1], ['onlineMs', 'Time online', 1], ['lastSeen', 'Last seen'],
-    ['lastIp', 'Last IP'], ['joined', 'Joined'], ['email', 'Email']];
-  const day = t => t ? new Date(t).toLocaleDateString() : '—';
-  const stamp = t => t ? new Date(t).toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
-  const dur = ms => { if (!ms) return '—'; const m = Math.round(ms / 60000); return m < 1 ? '<1 min' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
-
-  // ── Activity: every online visit (sign-in time, how long, IP, device, games) ──
-  let visits = null, actFilter = '';
-  function activityHtml() {
-    if (!visits) return '';
-    return `<h2>Activity <small class="meta">online visits, last 90 days</small></h2>
-      <form class="row" id="act-filter"><input name="player" inputmode="numeric" maxlength="4" placeholder="Player ID (blank: everyone)" value="${esc(actFilter)}">
-        <button>Show</button> <button type="button" data-act-csv>Download (CSV)</button></form>
-      <div class="wide"><table><tr><th>ID</th><th>Name</th><th>Logged in</th><th>Logged out</th><th class="n">Duration</th><th class="n">Games</th><th>IP address</th><th>Device</th></tr>
-      ${visits.map(v => `<tr><td>${v.online ? '<span class="dot" title="online now"></span>' : ''}${esc(v.playerCode)}</td><td>${esc(v.name)}</td><td>${stamp(v.start)}</td>
-        <td>${v.online ? '<b>online now</b>' : stamp(v.end)}</td><td class="n">${dur(v.duration)}</td><td class="n">${v.games}</td><td>${esc(v.ip)}</td><td>${esc(v.app)}</td></tr>`).join('')
-        || '<tr><td colspan="8">No visits yet.</td></tr>'}</table></div>
-      <p class="meta">A visit starts when the app goes online and ends 30 seconds after it closes or goes offline. Showing the latest ${visits.length}.</p>`;
-  }
-  function activityCsv() {
-    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`, iso = t => t ? new Date(t).toISOString().replace('T', ' ').slice(0, 19) : '';
-    const lines = [['Player ID', 'Name', 'Logged in (UTC)', 'Logged out (UTC)', 'Minutes', 'Games', 'IP address', 'Device'],
-      ...visits.map(v => [v.playerCode, v.name, iso(v.start), v.online ? 'online now' : iso(v.end), Math.round(v.duration / 6000) / 10, v.games, v.ip, v.app])];
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.map(l => l.map(q).join(',')).join('\r\n')], { type: 'text/csv' }));
-    a.download = `vistr-activity-${actFilter || 'all'}-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
-  }
-  function playersHtml() {
-    if (!players) return '<h2>Players</h2><p class="meta">The player list needs the newest server version.</p>';
-    const on = new Set(players.online);
-    const rows = [...players.players].sort((a, b) => {
-      const x = a[sortBy] ?? '', y = b[sortBy] ?? '';
-      return (typeof x === 'number' || /^\d+$/.test(x) ? Number(x) - Number(y) : String(x).localeCompare(String(y))) * sortDir;
-    });
-    return `<h2>Players <small class="meta">${players.players.length} with an ID</small></h2>
-      <div class="card"><p class="ids"><small>Online (${players.online.length})</small><br>${players.online.map(c => `<b>${esc(c)}</b>`).join('') || '<small>nobody</small>'}</p>
-      <p class="ids avail"><small>Available (${players.available.length})</small><br>${players.available.map(c => `<b>${esc(c)}</b>`).join('') || '<small>nobody</small>'}</p></div>
-      <div class="row"><button type="button" data-csv>Download for a spreadsheet (CSV)</button> <button type="button" data-reload>Refresh</button></div>
-      <div class="wide"><table><tr>${COLS.map(([k, label, n]) => `<th class="${n ? 'n' : ''}" data-sort="${k}">${label}${sortBy === k ? (sortDir < 0 ? ' ▼' : ' ▲') : ''}</th>`).join('')}</tr>
-      ${rows.map(p => `<tr><td>${on.has(p.playerCode) ? '<span class="dot" title="online"></span>' : ''}<a href="#" data-act-player="${esc(p.playerCode)}" title="Show this player's visits">${esc(p.playerCode)}</a></td><td>${esc(p.name)}</td><td>${esc(p.rank)}</td>
-        <td class="n"><b>${p.rating}</b></td><td class="n">${p.points.toLocaleString()}</td><td class="n">${p.games}</td><td class="n">${p.best}</td><td class="n">${p.average}</td>
-        <td class="n">${p.wins}-${p.losses}-${p.draws}</td><td class="n">${p.words}</td><td class="n">${dur(p.onlineMs)}</td><td>${stamp(p.lastSeen)}</td><td>${esc(p.lastIp)}</td><td>${day(p.joined)}</td><td>${esc(p.email)}</td></tr>`).join('')}</table></div>
-      <p class="meta">Rating starts at 1000. Solo games are rated against the average score at that word length and intensity; two-player games against the opponent's rating. Only online games count. Click a column to sort.</p>`;
-  }
-  function csv() {
-    const head = ['Player ID', 'Name', 'Rank', 'Rating', 'Total points', 'Games', 'Best game', 'Average', 'Wins', 'Losses', 'Draws', 'Words', 'Minutes online (90 days)', 'Last seen', 'Last IP', 'Last played', 'Joined', 'Email'];
-    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const iso = t => t ? new Date(t).toISOString().slice(0, 10) : '';
-    const lines = [head, ...players.players.map(p => [p.playerCode, p.name, p.rank, p.rating, p.points, p.games, p.best, p.average, p.wins, p.losses, p.draws, p.words, Math.round((p.onlineMs || 0) / 60000), iso(p.lastSeen), p.lastIp, iso(p.lastPlayed), iso(p.joined), p.email])];
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.map(l => l.map(q).join(',')).join('\r\n')], { type: 'text/csv' }));
-    a.download = `vistr-players-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
-  }
-
-  document.getElementById('out').addEventListener('submit', e => {
-    if (e.target.id !== 'act-filter') return;
-    e.preventDefault(); actFilter = e.target.player.value.replace(/\D/g, ''); load();
-  });
-  document.getElementById('login').addEventListener('submit', e => { e.preventDefault(); key = e.target.key.value; load(); });
-  document.getElementById('out').addEventListener('click', async e => {
-    const del = e.target.dataset.del, rv = e.target.dataset.review;
-    const sort = e.target.closest('[data-sort]')?.dataset.sort;
-    if (sort) { sortDir = sortBy === sort ? -sortDir : -1; sortBy = sort; load(); return; }
-    if (e.target.closest('[data-csv]')) return csv();
-    if (e.target.closest('[data-reload]')) return load();
-    if (e.target.closest('[data-act-csv]')) return activityCsv();
-    const ap = e.target.closest('[data-act-player]');
-    if (ap) { e.preventDefault(); actFilter = ap.dataset.actPlayer; await load(); document.getElementById('act-filter')?.scrollIntoView({ behavior: 'smooth' }); }
-    if (del && confirm('Delete this message?')) { await get('/api/contact/messages?delete=' + encodeURIComponent(del)); load(); }
-    if (rv) { await get(`/api/reviews/all?player=${encodeURIComponent(rv)}&status=${e.target.dataset.status}`); load(); }
-  });
-  if (key) load();
-</script>
+  <main>
+    <h1>The Vistr admin has moved</h1>
+    <p>All admin is on memoryq.com now: <b>Admin &rarr; Games</b> (the word game and Spot What's Missing).</p>
+    <p><a href="https://memoryq.com/admin#games/vistr">Open memoryq.com/admin</a></p>
+  </main>
 </body>
 </html>

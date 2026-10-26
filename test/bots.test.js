@@ -61,7 +61,7 @@ async function signIn(email) {
 }
 
 (async () => {
-  const env = { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', VISTR_DB: path.join(tmp, 'db.json'), ADMIN_KEY: 'test',
+  const env = { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', VISTR_DB: path.join(tmp, 'db.json'), ADMIN_KEY: 'test', VISTR_OPEN_SIGNUP: '1',
     BOT_WAIT_SECONDS: '1', BOT_THINK_MIN_MS: '300', BOT_THINK_MAX_MS: '600', BOT_MISTAKES: '0', BOT_LINGER_SECONDS: '5',
     TURN_SECONDS: '10', ROUND_SECONDS: '90' };
   delete env.UPSTASH_REDIS_REST_URL; delete env.UPSTASH_REDIS_REST_TOKEN;
