@@ -53,6 +53,19 @@ const post = (p, body, token) => fetch(BASE + p, { method: 'POST', headers: { 'C
     ok('... or with their Player ID', r.status === 200 && r.body.player.mq === '');
     r = await fetch(BASE + '/api/me', { headers: { Authorization: 'Bearer ' + token } }).then(x => x.json());
     ok('the game knows the ID is not linked yet (it invites to link)', r.player.mq === '');
+    console.log('-- Game IDs given from memoryq.com --');
+    r = await post('/api/admin/player/assign?key=wrong', { mq: 'neema', email: 'neema@example.com' });
+    ok('only with the admin key', r.status === 403);
+    r = await post('/api/admin/player/assign?key=test', { mq: 'neema', email: 'neema@example.com', code: '77' });
+    ok('a member gets the Player ID asked for (a new player, linked)', r.status === 200 && r.body.player.code === '77' && r.body.player.mq === 'neema' && r.body.made === true);
+    r = await post('/api/admin/player/assign?key=test', { mq: 'neema', email: 'neema@example.com', code: '78' });
+    ok('asked again: the same player gets the new number', r.status === 200 && r.body.player.code === '78' && r.body.made === false);
+    r = await post('/api/admin/player/assign?key=test', { mq: 'baraka', email: 'phone.player@example.com' });
+    ok('a player with the same email (not linked yet) becomes theirs', r.status === 200 && r.body.player.code === code && r.body.made === false);
+    r = await post('/api/admin/player/assign?key=test', { mq: 'juma', email: 'juma@example.com', code: '78' });
+    ok('a number someone else has is refused (and nothing is made)', r.status === 409);
+    r = await post('/api/admin/player/assign?key=test', { mq: 'juma', email: 'not-an-email' });
+    ok('a game ID needs an email', r.status === 400);
     r = await post('/api/auth/memoryq', { code: 'x'.repeat(24), link: true });
     ok('linking needs the player to be signed in', r.status === 401 || r.status === 502);
   } catch (e) {

@@ -653,6 +653,30 @@ const routes = {
     if (body.mq !== undefined) store.linkMq(p.id, String(body.mq).replace(/[^A-Za-z0-9_]/g, '').slice(0, 24));
     send(res, 200, { player: { code: p.code, name: p.name || '', email: p.email, mq: p.mq || '' } });
   },
+  // The Memoryq super-admin (or a moderator with "assign game IDs") gives a Memoryq member a Player ID: the member's
+  // player if there is one, else the player with the same email, else a new one; then the Player ID asked for, if free.
+  'POST /api/admin/player/assign': async (req, res, { url, body }) => {
+    if (!adminOk(url)) return send(res, 403, { error: 'Wrong admin key.' });
+    const mq = String(body.mq || '').replace(/[^A-Za-z0-9_]/g, '').slice(0, 24);
+    const email = String(body.email || '').trim().toLowerCase().slice(0, 200);
+    if (!mq) return send(res, 400, { error: 'Which Memoryq member?' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return send(res, 400, { error: 'The member needs an email address.' });
+    let p = store.findPlayerByMq(mq), made = false;
+    if (!p) { const byEmail = store.findPlayerByEmail(email); if (byEmail && !byEmail.mq) p = byEmail; }
+    const want = String(body.code || '').replace(/\D/g, '');
+    if (want && !/^\d{2,4}$/.test(want)) return send(res, 400, { error: 'A Player ID is 2 to 4 digits.' });
+    const holder = want && store.findPlayerByCode(want);
+    if (holder && (!p || holder.id !== p.id)) return send(res, 409, { error: `Player ID ${want} belongs to another player.` });
+    if (!p) { p = store.createPlayer(email); made = true; }
+    if (!p.mq) store.linkMq(p.id, mq);
+    if (!p.name) store.setName(p.id, mq);
+    if (want && want !== p.code) {
+      const r = store.setCode(p.id, want);
+      if (r.error) return send(res, 409, r);
+    }
+    console.log(`[admin] Memoryq ${mq} has Vistr player ${p.code}${made ? ' (new)' : ''}`);
+    send(res, 200, { player: { code: p.code, name: p.name || '', email: p.email, mq: p.mq || mq }, made });
+  },
   'GET /api/admin/players': async (req, res, { url }) => {
     if (!adminOk(url)) return send(res, 403, { error: 'Wrong admin key.' });
     const { online, available } = lobby();
@@ -811,7 +835,7 @@ const routes = {
     send(res, 200, { level, intensity, lang, topTen: store.topTen(me.id, level, intensity, lang), board: store.levelBoard(level, intensity, lang) });
   },
 };
-const PUBLIC = new Set(['GET /api/admin/activity', 'GET /api/admin/players', 'GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'POST /api/auth/memoryq', 'POST /api/admin/player', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
+const PUBLIC = new Set(['GET /api/admin/activity', 'GET /api/admin/players', 'GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'POST /api/auth/memoryq', 'POST /api/admin/player', 'POST /api/admin/player/assign', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);

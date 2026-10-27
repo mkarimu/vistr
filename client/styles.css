@@ -557,6 +557,30 @@ button.net-pill:focus-visible { outline: 3px solid var(--sky); outline-offset: 3
 
 .signin-title { margin: 0; font-size: 1.4rem; color: var(--cream); }
 
+/* Sign in / New player: compact, everything on one screen */
+.signin { gap: 12px; padding-top: 10px; }
+.signin .wordmark { font-size: clamp(2.4rem, 11vw, 3.2rem); }
+.signin .signin-title { font-size: 1.1rem; }
+.auth-card { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: var(--radius); background: rgba(255, 255, 255, 0.06); border: 2px solid var(--line); }
+.auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 12px; background: rgba(0, 0, 0, 0.22); }
+.auth-tabs button { font: inherit; font-size: 0.95rem; font-weight: 600; padding: 8px 6px; border: 0; border-radius: 9px; background: none; color: var(--mute); cursor: pointer; }
+.auth-tabs button[aria-selected="true"] { background: var(--sunshine); color: var(--ink); }
+.auth-form { display: flex; flex-direction: column; gap: 10px; }
+.signin label { font-size: 0.85rem; gap: 4px; }
+.signin label small { font-size: 0.76rem; font-weight: 400; }
+.signin input { font-size: 1rem; padding: 10px 12px; border-radius: 12px; }
+.signin .id-input { font-size: 1.5rem; }
+.signin .btn { font-size: 1rem; min-height: 46px; padding: 10px 16px; }
+.pw { position: relative; display: flex; }
+.pw input { flex: 1; min-width: 0; padding-right: 46px; }
+.pw-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 40px; height: 36px; border: 0; background: none; color: var(--mute); font-size: 1.05rem; cursor: pointer; }
+.pw-eye[aria-pressed="true"] { color: var(--sunshine); }
+.auth-note { margin: 0; font-size: 0.78rem; color: var(--mute); text-align: center; }
+.auth-alt { text-align: center; font-size: 0.88rem; }
+.signin .advanced summary { font-size: 0.88rem; }
+.signin .remember { font-size: 0.85rem; }
+.signin .error { font-size: 0.9rem; margin: 0; }
+
 /* One letter per move: the other drums lock once a letter is changed */
 .drum.held .face { opacity: 0.45; filter: saturate(0.4); }
 .drum.held .nudge { opacity: 0.25; }
@@ -811,6 +835,13 @@ dialog.reader[open] { display: flex; }
 .name-form { display: flex; gap: 8px; margin-top: 8px; }
 .name-form input { flex: 1; min-width: 0; font: inherit; color: var(--cream); background: rgba(0, 0, 0, 0.25); border: 2px solid var(--line); border-radius: 12px; padding: 8px 10px; }
 .stack label small { font-weight: 400; color: var(--mute); font-size: 0.82rem; }
+
+/* The phone app: a newer version is on memoryq.com/download */
+.update-bar { position: fixed; left: 12px; right: 12px; bottom: calc(var(--ad-h) + 12px + env(safe-area-inset-bottom)); z-index: 60; display: flex; gap: 10px; align-items: center;
+  padding: 10px 12px; border-radius: 14px; background: var(--night-2); border: 2px solid var(--sunshine); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); font-size: 0.92rem; }
+.update-bar p { margin: 0; flex: 1; }
+.update-bar .btn { min-height: 40px; padding: 8px 14px; font-size: 0.95rem; }
+.update-bar .x { background: none; border: 0; color: var(--mute); font-size: 1.3rem; cursor: pointer; padding: 4px 6px; }
 
 /* Vistr is the home of the games: a card for Spot What's Missing on the home screen and in the menu */
 .games-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius); text-decoration: none; color: var(--cream);

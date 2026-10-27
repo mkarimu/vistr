@@ -13,6 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script src="config.js"></script>
+  <script src="app-version.js"></script>
 </head>
 <body>
   <!-- One top bar for every screen: stays in place while the page scrolls -->
@@ -47,14 +48,33 @@
   </template>
 
   <template id="t-signin">
-    <section class="screen narrow">
+    <section class="screen narrow signin">
       <h1 class="wordmark" aria-label="Vistr"><span>V</span><span>i</span><span>s</span><span>t</span><span>r</span></h1>
       <h2 class="signin-title">Play online</h2>
-      <p class="lead">New here? Sign in with a free Memoryq account - one account for all Vistr games. Played before? Use your email or Player ID.</p>
-      <div class="stack" data-memoryq-box>
-        <button class="btn primary" type="button" data-action="memoryq">Sign in with Memoryq (Google or password)</button>
-        <small class="hint">Your Memoryq account is your player too - one account for memoryq.com, the Memoryq app and Vistr.</small>
+      <div class="auth-card">
+        <div class="auth-tabs" role="tablist" aria-label="Sign in or create an account">
+          <button type="button" role="tab" data-tab="in" aria-selected="true">Sign in</button>
+          <button type="button" role="tab" data-tab="new" aria-selected="false">New player</button>
+        </div>
+        <form class="auth-form" data-form="mq" novalidate>
+          <label>Username
+            <input name="username" type="text" required maxlength="24" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="e.g. amina_k">
+          </label>
+          <label>Password
+            <span class="pw"><input name="password" type="password" required maxlength="128" autocomplete="current-password" placeholder="Your password"><button type="button" class="pw-eye" data-action="pw-eye" aria-label="Show the password">&#128065;</button></span>
+          </label>
+          <label data-new-only hidden>Email <small>(optional - to get back in if you forget your password)</small>
+            <input name="email" type="email" maxlength="200" autocomplete="email" placeholder="you@example.com">
+          </label>
+          <label data-code-row hidden>The code from the email
+            <input name="code" inputmode="numeric" maxlength="8" autocomplete="one-time-code" placeholder="123456">
+          </label>
+          <button class="btn primary" type="submit" data-submit>Sign in</button>
+          <p class="auth-note" data-auth-note>One Memoryq account for all Vistr games, memoryq.com and the Memoryq app.</p>
+        </form>
+        <div class="auth-alt" data-memoryq-box><button class="link" type="button" data-action="memoryq">Sign in with Google (opens memoryq.com)</button></div>
       </div>
+      <p class="error" data-error role="alert"></p>
       <details class="advanced" data-has-email>
       <summary>I played before with my email</summary>
       <form class="stack" data-form="email">
@@ -77,7 +97,6 @@
         </form>
       </details>
       <label class="remember" style="display:flex;flex-direction:row;gap:8px;align-items:center;justify-content:center;margin:12px 0 0"><input type="checkbox" data-remember checked style="width:auto"> Remember me for 30 days</label>
-      <p class="error" data-error></p>
       <button class="link center" type="button" data-action="standalone">Not now, stay offline</button>
     </section>
   </template>

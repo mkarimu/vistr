@@ -612,7 +612,71 @@
       $('[data-has-email]').before($('[data-has-id]'));
     }
     const rem = () => $('[data-remember]')?.checked !== false;
-    if (isNative) $('[data-memoryq-box]').hidden = true;   // the app's built-in page cannot open memoryq.com yet
+    if (isNative) $('[data-memoryq-box]').hidden = true;   // Google needs memoryq.com in a browser; username + password work here
+    // ---- one Memoryq account: sign in or make one right here (username + password; email optional) ----
+    const af = $('[data-form=mq]');
+    let mode = 'in', pending = null;
+    const setMode = m => {
+      mode = m; pending = null;
+      $$('[data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === m)));
+      $$('[data-new-only]').forEach(x => { x.hidden = m !== 'new'; });
+      $('[data-code-row]').hidden = true;
+      af.username.disabled = false; af.password.disabled = false;
+      af.password.autocomplete = m === 'new' ? 'new-password' : 'current-password';
+      af.password.placeholder = m === 'new' ? t('8 characters or more') : t('Your password');
+      $('[data-submit]').textContent = m === 'new' ? t('Create my account and play') : t('Sign in');
+      $('[data-auth-note]').textContent = m === 'new' ? t('Username: 3 to 24 letters, numbers or _. Free, and the same account works on memoryq.com.')
+        : t('One Memoryq account for all Vistr games, memoryq.com and the Memoryq app.');
+      setError('');
+    };
+    $$('[data-tab]').forEach(b => { b.onclick = () => { setMode(b.dataset.tab); af.username.focus(); }; });
+    const mqPost = async (path, body, token) => {
+      const r = await fetch(MEMORYQ + path, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+        body: new URLSearchParams(body).toString() }).catch(() => null);
+      if (!r) throw new Error(t('Memoryq could not be reached. Check the internet and try again.'));
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error ? cap(d.error) + '.' : t('Memoryq said no ({s}). Try again.', { s: r.status }));
+      return d;
+    };
+    const cap = x => String(x).charAt(0).toUpperCase() + String(x).slice(1);
+    // a Memoryq sign-in becomes this game's sign-in (the same player everywhere); the Memoryq one is not kept here
+    const intoGame = async token => {
+      const h = await mqPost('/api/auth/handoff', { app: 'vistr', return: location.origin + location.pathname, remember: rem() ? '1' : '0' }, token);
+      fetch(MEMORYQ + '/api/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + token } }).catch(() => {});
+      const r = await api('POST', '/api/auth/memoryq', { code: h.code });
+      signedIn(r, r.remember !== false);
+      if (r.isNew) showWelcome(true);
+      else { showHome(); toast(t("You're online as Player {p}.", { p: r.player.code })); }
+    };
+    af.onsubmit = e => {
+      e.preventDefault();
+      guard(async () => {
+        const u = af.username.value.trim(), pw = af.password.value;
+        if (pending) {
+          const code = af.code.value.trim();
+          if (!code) throw new Error(t('Type the code from the email.'));
+          const d = await mqPost('/api/register/verify', { username: pending, code, remember: rem() ? '1' : '0' });
+          return intoGame(d.token);
+        }
+        if (!/^[A-Za-z0-9_]{3,24}$/.test(u)) throw new Error(t('Username: 3 to 24 letters, numbers or _ (no spaces).'));
+        if (mode === 'new' && pw.length < 8) throw new Error(t('The password needs 8 characters or more.'));
+        if (!pw) throw new Error(t('Type your password.'));
+        if (mode === 'new') {
+          const d = await mqPost('/api/register', { username: u, password: pw, email: af.email.value.trim(), app: 'vistr' });
+          if (d.verify) {   // an email was given: Memoryq sends a code to confirm it
+            pending = d.username;
+            af.username.disabled = true; af.password.disabled = true;
+            $('[data-code-row]').hidden = false; af.code.focus();
+            $('[data-submit]').textContent = t('Confirm and play');
+            $('[data-auth-note]').textContent = t('We sent a code to {e}. Type it above.', { e: d.email });
+            return;
+          }
+          return intoGame(d.token);
+        }
+        const d = await mqPost('/api/login', { username: u, password: pw, remember: rem() ? '1' : '0' });
+        return intoGame(d.token);
+      });
+    };
     fi.onsubmit = e => {
       e.preventDefault();
       guard(async () => { signedIn(await api('POST', '/api/auth/id', { code: fi.code.value.trim(), remember: rem() ? 1 : 0 }), rem()); showHome(); toast(t("You're online as Player {p}.", { p: S.player.code })); });
@@ -630,9 +694,15 @@
       const a = e.target.closest('[data-action]')?.dataset.action;
       if (a === 'standalone') goStandalone();
       if (a === 'memoryq') location.href = memoryqLogin();
+      if (a === 'pw-eye') {
+        const eye = e.target.closest('[data-action=pw-eye]'), shown = af.password.type === 'text';
+        af.password.type = shown ? 'password' : 'text'; eye.setAttribute('aria-pressed', String(!shown));
+        eye.setAttribute('aria-label', shown ? t('Show the password') : t('Hide the password'));
+      }
     };
   }
   // memoryq.com signs you in (Google or password) and sends you back here with a one-time code.
+  const MEMORYQ = (window.VISTR_MEMORYQ || 'https://memoryq.com').replace(/\/$/, '');
   function memoryqLogin(link) {
     const back = location.origin + location.pathname + (link ? '?link=1' : '');
     return `${window.VISTR_MEMORYQ || 'https://memoryq.com'}/login?app=vistr&return=${encodeURIComponent(back)}`;
@@ -1639,7 +1709,32 @@
   const mqCode = (location.hash.match(/[#&]mq=([A-Za-z0-9_-]{20,})/) || [])[1];
   if (mqCode) { try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {} }
 
+  // The phone app checks memoryq.com/download for a newer version and offers it (Android asks before installing).
+  const newer = (a, b) => {   // is version a newer than b? (1.10.0 > 1.9.2)
+    const x = String(a).split(/[.-]/).map(n => parseInt(n, 10) || 0), y = String(b).split(/[.-]/).map(n => parseInt(n, 10) || 0);
+    for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); }
+    return false;
+  };
+  async function checkForUpdate() {
+    const mine = window.VISTR_APP_VERSION;
+    if (!isNative || !mine) return;
+    try {
+      const d = await fetch(`${window.VISTR_MEMORYQ || 'https://memoryq.com'}/download/versions.json`, { cache: 'no-store' }).then(r => r.json());
+      const it = (d.apps || []).find(a => a.id === 'vistr' || String(a.name).toLowerCase() === 'vistr');
+      if (!it || !it.version || !newer(it.version, mine)) return;
+      if (saved('vistr.skipUpdate') === it.version) return;
+      const bar = document.createElement('div');
+      bar.className = 'update-bar'; bar.setAttribute('role', 'status');
+      bar.innerHTML = `<p><b>${t('A new Vistr is ready')}</b><br><small>${t('Version {v} (you have {m})', { v: it.version, m: mine })}</small></p>`
+        + `<button class="btn primary" type="button" data-update>${t('Update')}</button><button class="x" type="button" data-later aria-label="${t('Later')}">\u00d7</button>`;
+      document.body.appendChild(bar);
+      bar.querySelector('[data-update]').onclick = () => { toast(t('Downloading - then tap the file and Install.')); location.href = it.url; };
+      bar.querySelector('[data-later]').onclick = () => { saved('vistr.skipUpdate', it.version); bar.remove(); };
+    } catch (_) { /* offline: try next time */ }
+  }
+
   async function boot() {
+    checkForUpdate();
     document.documentElement.lang = S.lang;
     translateDom(document.body);
     renderLangPicker();
