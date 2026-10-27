@@ -1717,7 +1717,8 @@
   };
   async function checkForUpdate() {
     const mine = window.VISTR_APP_VERSION;
-    if (!isNative || !mine) return;
+    // The Google Play version is updated by Google Play only (Play does not allow apps to update themselves).
+    if (!isNative || !mine || window.VISTR_STORE === 'play') return;
     try {
       const d = await fetch(`${window.VISTR_MEMORYQ || 'https://memoryq.com'}/download/versions.json`, { cache: 'no-store' }).then(r => r.json());
       const it = (d.apps || []).find(a => a.id === 'vistr' || String(a.name).toLowerCase() === 'vistr');
@@ -1735,6 +1736,10 @@
 
   async function boot() {
     checkForUpdate();
+    if (window.VISTR_STORE === 'play') {   // the Google Play version (13+) has the word game only; Spot What's Missing is on the website
+      for (const tpl of document.querySelectorAll('template')) tpl.content.querySelectorAll('a[href="missing/"]').forEach(a => a.remove());
+      document.querySelectorAll('a[href="missing/"]').forEach(a => a.remove());
+    }
     document.documentElement.lang = S.lang;
     translateDom(document.body);
     renderLangPicker();
