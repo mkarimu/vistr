@@ -858,3 +858,6 @@ dialog.reader[open] { display: flex; }
   border: 2px dashed var(--sky); background: rgba(69, 200, 245, 0.08); }
 .link-card p { margin: 0; flex: 1 1 220px; }
 .link-card small { color: var(--mute); }
+
+/* a game the Memoryq super-admin has not made public yet: no card on the home screen */
+.no-missing [data-games-card], .no-missing a.menu-game[href="missing/"] { display: none !important; }

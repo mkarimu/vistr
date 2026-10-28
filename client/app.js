@@ -1734,8 +1734,17 @@
     } catch (_) { /* offline: try next time */ }
   }
 
+  // Games the Memoryq super-admin has not opened to everyone yet: their card on the home screen is hidden.
+  async function checkGames() {
+    try {
+      const d = await fetch(`${window.VISTR_MEMORYQ || 'https://memoryq.com'}/api/games`, { cache: 'no-store' }).then(r => r.json());
+      (d.games || []).forEach(g => document.body.classList.toggle('no-' + g.key, g.public === false));
+    } catch (_) { /* offline: as it was */ }
+  }
+
   async function boot() {
     checkForUpdate();
+    checkGames();
     if (window.VISTR_STORE === 'play') {   // the Google Play version (13+) has the word game only; Spot What's Missing is on the website
       for (const tpl of document.querySelectorAll('template')) tpl.content.querySelectorAll('a[href="missing/"]').forEach(a => a.remove());
       document.querySelectorAll('a[href="missing/"]').forEach(a => a.remove());
