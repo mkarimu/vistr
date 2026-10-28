@@ -139,6 +139,14 @@ function setCode(id, code) {
   return {};
 }
 function linkMq(id, username) { const p = db.players[id]; if (p) { p.mq = username; save('players'); } return p; }
+// Paused from memoryq.com (the super-admin or the moderator who added the player): the player cannot sign in or play.
+function setPaused(id, on) {
+  const p = db.players[id]; if (!p) return null;
+  if (on) p.paused = true; else delete p.paused;
+  if (on) for (const [tok, s] of Object.entries(db.sessions)) if (s.playerId === id) delete db.sessions[tok];
+  save('players'); save('sessions');
+  return p;
+}
 // The Memoryq super-admin opens admin.html without the ADMIN_KEY: an admin sign-in of its own.
 function createAdminSession(mqUser, ttlMs) {
   const token = 'adm_' + require('crypto').randomBytes(32).toString('hex');
@@ -334,7 +342,7 @@ function ratingBoard(limit = 10) {
 // For the admin page: everyone, with their record and email.
 function allPlayers() {
   return Object.values(db.players).map(p => ({ ...recordView(p.id), email: p.email, name: p.name || '', mq: p.mq || '', lastIp: p.lastIp || '',
-    lastSeen: p.lastSeen || null, onlineMs: onlineTime(p.id) })).sort((a, b) => b.rating - a.rating || b.points - a.points);
+    lastSeen: p.lastSeen || null, onlineMs: onlineTime(p.id), paused: !!p.paused })).sort((a, b) => b.rating - a.rating || b.points - a.points);
 }
 // Players from before records existed: start their record from the games still saved.
 function seedCareers() {
@@ -415,5 +423,5 @@ module.exports = {
   countAd, adStats, isAvailable, setAvailable,
   findPlayerByEmail, findPlayerByCode, getPlayer, createPlayer,
   createSession, playerForToken, deleteSession, addResult, topTen, levelBoard,
-  findPlayerByMq, linkMq, createAdminSession, adminSessionOk, setCode,
+  findPlayerByMq, linkMq, createAdminSession, adminSessionOk, setCode, setPaused,
 };

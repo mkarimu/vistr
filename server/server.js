@@ -452,8 +452,10 @@ function readBody(req) {
 function auth(req, url) {
   const h = req.headers.authorization || '';
   const token = h.startsWith('Bearer ') ? h.slice(7) : url.searchParams.get('token');
-  return store.playerForToken(token);
+  const p = store.playerForToken(token);
+  return p && p.paused ? null : p;
 }
+const PAUSED = 'This Player ID is paused. Ask the person who gave it to you.';
 const MIME = { '.html': 'text/html; charset=utf-8', '.txt': 'text/plain; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.mp3': 'audio/mpeg', '.pdf': 'application/pdf' };
 
 function serveStatic(req, res, url) {
@@ -581,7 +583,12 @@ const routes = {
       return send(res, 200, { adminKey: store.createAdminSession(mq.username, days * DAY_MS), memoryq: mq.username, days });
     }
     let player = store.findPlayerByMq(mq.username), isNew = false;
-    if (!player && mq.email) { const p = store.findPlayerByEmail(String(mq.email).toLowerCase()); if (p && !p.mq) player = p; }   // same email: their old player
+    if (!player && mq.email) {   // same email: their old player
+      const p = store.findPlayerByEmail(String(mq.email).toLowerCase());
+      if (p && !p.mq) player = p;
+      else if (p) return send(res, 409, { error: `Your email already has Vistr Player ${p.code}, linked to another Memoryq account. Sign in to memoryq.com with that account to play as Player ${p.code}, or ask the Memoryq admin to move it to this one.` });
+    }
+    if (player && player.paused) return send(res, 403, { error: PAUSED });
     if (!player) { player = store.createPlayer(mq.email ? String(mq.email).toLowerCase() : `${String(mq.username).toLowerCase()}@users.memoryq.com`); isNew = true; }
     if (!player.mq) store.linkMq(player.id, mq.username);
     if (!player.name) store.setName(player.id, mq.username);
@@ -599,6 +606,7 @@ const routes = {
     if (isNew && !body.native && process.env.VISTR_OPEN_SIGNUP !== '1') {
       return send(res, 403, { error: 'New players join with a free Memoryq account - one account for all Vistr games. Tap "Sign in with Memoryq".', memoryq: true });
     }
+    if (player && player.paused) return send(res, 403, { error: PAUSED });
     if (isNew) { player = store.createPlayer(email); emailPlayerId(email, player.code); }
     if (body.name && (isNew || !player.name)) store.setName(player.id, body.name);
     store.noteSignIn(player.id, clientIp(req));
@@ -610,6 +618,7 @@ const routes = {
     const code = String(body.code || '').replace(/\D/g, '');
     const player = code && store.findPlayerByCode(code);
     if (!player) { noteIdFailure(ip); return send(res, 404, { error: `There is no player ${code || 'with that ID'}. New here? Use your email to get an ID.` }); }
+    if (player.paused) return send(res, 403, { error: PAUSED });
     store.noteSignIn(player.id, clientIp(req));
     send(res, 200, { token: store.createSession(player.id, ttlOf(body.remember)), player: { code: player.code, email: player.email, mq: player.mq || '' } });
   },
@@ -661,10 +670,22 @@ const routes = {
     const email = String(body.email || '').trim().toLowerCase().slice(0, 200);
     if (!mq) return send(res, 400, { error: 'Which Memoryq member?' });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return send(res, 400, { error: 'The member needs an email address.' });
+    // The same person keeps one player: theirs (linked to this member), else the one with their email. Nothing is
+    // made or changed when the email's player belongs to another member, or when a different number would replace
+    // the one they have (their points are on it) - unless the admin confirmed that (change).
     let p = store.findPlayerByMq(mq), made = false;
-    if (!p) { const byEmail = store.findPlayerByEmail(email); if (byEmail && !byEmail.mq) p = byEmail; }
+    const byEmail = p ? null : store.findPlayerByEmail(email);
+    if (!p && byEmail && !byEmail.mq) p = byEmail;
+    const view = x => x && { code: x.code, name: x.name || '', email: x.email, mq: x.mq || '', paused: !!x.paused };
+    if (body.peek) return send(res, 200, { player: view(p), other: byEmail && byEmail.mq ? view(byEmail) : null });
+    if (!p && byEmail && byEmail.mq && !body.newPlayer) {
+      return send(res, 409, { error: `${email} already has Vistr Player ${byEmail.code}, linked to Memoryq member ${byEmail.mq}. If that is the same person, use ${byEmail.mq} (their points are on Player ${byEmail.code}).`, existing: byEmail.code, owner: byEmail.mq });
+    }
     const want = String(body.code || '').replace(/\D/g, '');
     if (want && !/^\d{2,4}$/.test(want)) return send(res, 400, { error: 'A Player ID is 2 to 4 digits.' });
+    if (p && want && want !== p.code && !body.change) {
+      return send(res, 409, { error: `${mq} already has Vistr Player ID ${p.code} - their points are on it.`, existing: p.code, owner: mq });
+    }
     const holder = want && store.findPlayerByCode(want);
     if (holder && (!p || holder.id !== p.id)) return send(res, 409, { error: `Player ID ${want} belongs to another player.` });
     if (!p) { p = store.createPlayer(email); made = true; }
@@ -675,7 +696,33 @@ const routes = {
       if (r.error) return send(res, 409, r);
     }
     console.log(`[admin] Memoryq ${mq} has Vistr player ${p.code}${made ? ' (new)' : ''}`);
-    send(res, 200, { player: { code: p.code, name: p.name || '', email: p.email, mq: p.mq || mq }, made });
+    send(res, 200, { player: { code: p.code, name: p.name || '', email: p.email, mq: p.mq || mq, paused: !!p.paused }, made });
+  },
+  // memoryq.com pauses a player (cannot sign in or play) or lets them play again.
+  'POST /api/admin/player/pause': async (req, res, { url, body }) => {
+    if (!adminOk(url)) return send(res, 403, { error: 'Wrong admin key.' });
+    const p = store.findPlayerByCode(String(body.code || '').replace(/\D/g, ''));
+    if (!p) return send(res, 404, { error: 'No such player.' });
+    const on = body.paused === true || body.paused === 1 || body.paused === '1' || body.paused === 'true';
+    store.setPaused(p.id, on);
+    if (on) { endRequestsFor(p.id, 'left'); for (const s of streams.get(p.id) || []) s.end(); }
+    console.log(`[admin] player ${p.code} ${on ? 'paused' : 'can play again'}`);
+    send(res, 200, { player: { code: p.code, paused: on } });
+  },
+  // memoryq.com deletes a player (its scores go; the number is never used again).
+  'POST /api/admin/player/delete': async (req, res, { url, body }) => {
+    if (!adminOk(url)) return send(res, 403, { error: 'Wrong admin key.' });
+    const p = store.findPlayerByCode(String(body.code || '').replace(/\D/g, ''));
+    if (!p) return send(res, 404, { error: 'No such player.' });
+    endRequestsFor(p.id, 'left');
+    const m = matches.get(activeMatch.get(p.id));
+    if (m) { m.endedBy = p.code; finishMatch(m, 'ended'); }
+    for (const s of streams.get(p.id) || []) s.end();
+    streams.delete(p.id);
+    const code = store.deletePlayer(p.id);
+    broadcastPlayers();
+    console.log(`[admin] player ${code} deleted from memoryq.com`);
+    send(res, 200, { deleted: code });
   },
   'GET /api/admin/players': async (req, res, { url }) => {
     if (!adminOk(url)) return send(res, 403, { error: 'Wrong admin key.' });
@@ -835,7 +882,7 @@ const routes = {
     send(res, 200, { level, intensity, lang, topTen: store.topTen(me.id, level, intensity, lang), board: store.levelBoard(level, intensity, lang) });
   },
 };
-const PUBLIC = new Set(['GET /api/admin/activity', 'GET /api/admin/players', 'GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'POST /api/auth/memoryq', 'POST /api/admin/player', 'POST /api/admin/player/assign', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
+const PUBLIC = new Set(['GET /api/admin/activity', 'GET /api/admin/players', 'GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'POST /api/auth/memoryq', 'POST /api/admin/player', 'POST /api/admin/player/assign', 'POST /api/admin/player/pause', 'POST /api/admin/player/delete', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
