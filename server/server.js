@@ -724,6 +724,14 @@ const routes = {
     console.log(`[admin] player ${code} deleted from memoryq.com`);
     send(res, 200, { deleted: code });
   },
+  // Games per player per day for the performance report (the memoryq.com admin asks; counts start when this went live).
+  'GET /api/admin/report': async (req, res, { url }) => {
+    if (!adminOk(url)) return send(res, 403, { error: 'Wrong admin key.' });
+    const day = /^\d{4}-\d{2}-\d{2}$/;
+    const from = url.searchParams.get('from') || '', to = url.searchParams.get('to') || '';
+    if (!day.test(from) || !day.test(to) || from > to) return send(res, 400, { error: 'from and to must be dates (YYYY-MM-DD), from first.' });
+    send(res, 200, { from, to, players: store.playReport(from, to) });
+  },
   'GET /api/admin/players': async (req, res, { url }) => {
     if (!adminOk(url)) return send(res, 403, { error: 'Wrong admin key.' });
     const { online, available } = lobby();
@@ -882,7 +890,7 @@ const routes = {
     send(res, 200, { level, intensity, lang, topTen: store.topTen(me.id, level, intensity, lang), board: store.levelBoard(level, intensity, lang) });
   },
 };
-const PUBLIC = new Set(['GET /api/admin/activity', 'GET /api/admin/players', 'GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'POST /api/auth/memoryq', 'POST /api/admin/player', 'POST /api/admin/player/assign', 'POST /api/admin/player/pause', 'POST /api/admin/player/delete', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
+const PUBLIC = new Set(['GET /api/admin/activity', 'GET /api/admin/report', 'GET /api/admin/players', 'GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'POST /api/auth/memoryq', 'POST /api/admin/player', 'POST /api/admin/player/assign', 'POST /api/admin/player/pause', 'POST /api/admin/player/delete', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);

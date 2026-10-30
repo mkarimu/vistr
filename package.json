@@ -7,7 +7,7 @@
   "engines": { "node": ">=18" },
   "scripts": {
     "start": "node server/server.js",
-    "test": "node test/scoring.test.js && node test/e2e.test.js",
+    "test": "node test/missing.test.js && node test/report.test.js",
     "build-dictionary": "python3 tools/build_dictionary.py /usr/share/hunspell/en_US.dic /usr/share/hunspell/en_US.aff client/words"
   }
 }

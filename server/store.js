@@ -304,6 +304,11 @@ function recordGame({ level, intensity, lang, mode, players, rated = true, fullR
     const opp = players.find(o => o.id !== x.id);
     c.games++; c.points += Math.max(0, x.score); c.best = Math.max(c.best, x.score); c.words += x.words || 0;
     c.lastPlayed = Date.now();
+    // games per day (UTC), for the performance report; kept ~13 months
+    const dk = new Date().toISOString().slice(0, 10);
+    c.days = c.days || {}; c.days[dk] = (c.days[dk] || 0) + 1;
+    const dks = Object.keys(c.days).sort();
+    for (const d of dks.slice(0, Math.max(0, dks.length - 400))) delete c.days[d];
     let delta = 0;
     if (rated) {
       const k = (c.rated < 20 ? 40 : 24) * (mode === 'duo' ? 1 : 0.5);
@@ -332,6 +337,17 @@ function recordView(id) {
   return { playerCode: p.code, name: p.name || '', joined: p.createdAt, games: c.games, points: c.points, best: c.best, words: c.words,
     wins: c.wins, losses: c.losses, draws: c.draws, rating: c.rating, rank: rankFor(c.points),
     nextRank: nr ? { name: nr[1], at: nr[0] } : null, average: c.games ? Math.round(c.points / c.games * 10) / 10 : 0, lastPlayed: c.lastPlayed };
+}
+// Games per player per day (UTC) between two dates (YYYY-MM-DD, inclusive): { code: { name, days: { date: games } } }.
+// Counts start the day this was switched on; earlier games were only added up, not dated.
+function playReport(from, to) {
+  const out = {};
+  for (const p of Object.values(db.players)) {
+    const days = {};
+    for (const [d, n] of Object.entries(p.career?.days || {})) if (d >= from && d <= to) days[d] = n;
+    if (Object.keys(days).length) out[p.code] = { name: p.name || '', days };
+  }
+  return out;
 }
 // Best-rated players who have played at least 3 rated games.
 function ratingBoard(limit = 10) {
@@ -417,7 +433,7 @@ function deletePlayer(id) {
 module.exports = {
   recordGame, recordView, ratingBoard, allPlayers, deletePlayer, RANKS,
   startVisit, touchVisit, endVisit, visitGame, activityList, setName, noteSignIn,
-  countGames, gameStats,
+  countGames, gameStats, playReport,
   addMessage, listMessages, deleteMessage, setReview, getReview, allReviews, setReviewStatus,
   ready, flushRemote, remote: !!REMOTE,
   countAd, adStats, isAvailable, setAvailable,
