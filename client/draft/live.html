@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vistr Draft - Live games</title>
+<style>
+html,body{margin:0;background:#1d2433;color:#fff;font:16px system-ui,sans-serif;min-height:100dvh}
+main{max-width:900px;margin:0 auto;padding:18px 16px}h1{margin:0 0 4px}.sub{opacity:.75;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+a.g{display:block;background:#2a3348;border-radius:14px;padding:14px;color:#fff;text-decoration:none;border:2px solid transparent}
+a.g:hover{border-color:#9cc4ff}.vs{display:flex;justify-content:space-between;gap:8px;font-weight:700}
+.A{color:#8bb8f5}.B{color:#ff9a9d}.pts{font-size:34px;font-weight:800}.meta{opacity:.75;font-size:13px;margin-top:6px}
+.live{display:inline-block;background:#e5484d;border-radius:6px;padding:1px 7px;font-size:12px;font-weight:700;margin-right:6px}
+.done{opacity:.6}a.back{color:#9cc4ff}
+</style></head><body><main>
+<h1>Live games</h1><p class="sub">Tap a game to watch it. <a class="back" href="./">Play Vistr Draft</a></p>
+<div id="list" class="grid"></div><p id="empty" class="sub"></p>
+</main>
+<script>
+function load(){
+  fetch('/api/draft/live').then(function(r){return r.json()}).then(function(j){
+    var l=document.getElementById('list');l.innerHTML='';
+    j.games.forEach(function(g){
+      var a=document.createElement('a');a.className='g'+(g.over?' done':'');a.href='./?watch='+g.room;
+      var n=function(x){var s=document.createElement('span');s.textContent=x;return s};
+      var vs=document.createElement('div');vs.className='vs';var A=n(g.names.A);A.className='A';var B=n(g.names.B);B.className='B';vs.appendChild(A);vs.appendChild(B);
+      var sc=document.createElement('div');sc.className='vs pts';var sa=n(g.score.A);sa.className='A';var sb=n(g.score.B);sb.className='B';sc.appendChild(sa);sc.appendChild(sb);
+      var m=document.createElement('div');m.className='meta';
+      m.textContent=(g.over?'Finished - ':'')+(g.level==='advanced'?'Advanced':'Standard')+' - dice '+g.dice.A+' v '+g.dice.B+' - '+g.watching+' watching';
+      if(!g.over){var lv=document.createElement('span');lv.className='live';lv.textContent='LIVE';m.insertBefore(lv,m.firstChild)}
+      a.appendChild(vs);a.appendChild(sc);a.appendChild(m);l.appendChild(a);
+    });
+    document.getElementById('empty').textContent=j.games.length?'':'No games are being played right now'+(j.waiting?' ('+j.waiting+' waiting for an opponent).':'.');
+  }).catch(function(){});
+}
+load();setInterval(load,3000);
+</script></body></html>

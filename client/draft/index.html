@@ -3,72 +3,260 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Vistr Draft</title>
 <style>
-:root{--a:#2f7de1;--b:#e5484d;--lt:#f3e3c3;--dk:#a9743f;--mid:#6fae7a;--mid2:#4d8f5b}
+:root{--a:#2f7de1;--b:#e5484d;--lt:#f3e3c3;--dk:#a9743f;--mid2:#4d8f5b;--bg:#1d2433;--card:#2a3348}
 *{box-sizing:border-box}
-body{margin:0;min-height:100dvh;background:#1d2433;color:#fff;font:16px system-ui,sans-serif;display:flex;flex-direction:column;align-items:center}
-header{width:100%;max-width:560px;padding:10px 14px;display:flex;align-items:center;gap:10px}
-h1{font-size:18px;margin:0;flex:1}
-button{font:inherit;border:0;border-radius:10px;padding:8px 14px;background:#3a4560;color:#fff}
-.bar{width:100%;max-width:560px;display:flex;justify-content:space-between;padding:0 14px 8px;gap:8px}
-.pl{flex:1;padding:8px 10px;border-radius:10px;background:#2a3348;border:3px solid transparent;font-weight:600}
-.pl.on{border-color:#fff}.pl.A{color:#8bb8f5}.pl.B{color:#ff9a9d}
-#msg{min-height:24px;font-size:14px;opacity:.9;padding:0 14px 6px;text-align:center}
-#board{width:min(100vw - 12px,560px);aspect-ratio:8/9;display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(9,1fr);border:4px solid #0d1220;border-radius:8px;overflow:hidden;margin-bottom:16px}
+html,body{margin:0;min-height:100dvh;background:var(--bg);color:#fff;font:16px system-ui,sans-serif}
+button,input{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:#3a4560;color:#fff}
+input{background:#fff;color:#111;width:100%}
+button.go{background:#2e9e5b;font-weight:700}button.warn{background:#7a3030}
+button.on{background:#fff;color:#111;font-weight:700}
+.hide{display:none!important}
+/* setup */
+#setup{max-width:480px;margin:0 auto;padding:18px 16px;display:flex;flex-direction:column;gap:14px}
+#setup h1{margin:0;font-size:26px}.sub{opacity:.75;margin:0;font-size:14px}
+.seg{display:flex;gap:8px}.seg button{flex:1}
+.box{background:var(--card);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.box small{opacity:.75}
+.row{display:flex;gap:8px}
+a{color:#9cc4ff}
+#err{color:#ffb3b3;min-height:20px;font-size:14px}
+/* game */
+#game{min-height:100dvh;display:flex;flex-direction:column;align-items:center;padding:8px}
+.top{width:100%;display:flex;gap:8px;align-items:center;justify-content:space-between;max-width:1400px}
+.top b{font-size:18px}.top .btns{display:flex;gap:6px}.top button{padding:8px 12px}
+#banner{min-height:30px;font-weight:700;text-align:center;padding:4px 8px;font-size:clamp(14px,2.2vw,22px)}
+#banner.pen{color:#ffd23f}
+.stage{display:flex;align-items:center;justify-content:center;gap:clamp(8px,2vw,28px);width:100%;flex:1}
+.panel{flex:1 1 0;max-width:300px;min-width:120px;background:var(--card);border-radius:16px;padding:14px;border:4px solid transparent;display:flex;flex-direction:column;gap:6px;align-self:center}
+.panel.on{border-color:#fff}.panel.A h2{color:#8bb8f5}.panel.B h2{color:#ff9a9d}
+.panel h2{margin:0;font-size:clamp(16px,2vw,24px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.panel .pts{font-size:clamp(34px,6vw,76px);font-weight:800;line-height:1}
+.panel .meta{opacity:.8;font-size:clamp(12px,1.4vw,16px)}
+.panel .away{color:#ffd23f;font-size:13px;min-height:16px}
+#board{--s:min(calc((100dvh - 150px) * 8 / 9), calc(100vw - 16px));width:var(--s);height:calc(var(--s) * 9 / 8);flex:none;display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(9,1fr);border:4px solid #0d1220;border-radius:8px;overflow:hidden}
 .sq{position:relative;display:flex;align-items:center;justify-content:center;background:var(--lt)}
-.sq.dk{background:var(--dk)}
-.sq.mid{background:#cfe6d0}.sq.mid.dk{background:var(--mid2)}
+.sq.dk{background:var(--dk)}.sq.mid{background:#cfe6d0}.sq.mid.dk{background:var(--mid2)}
+.sq.tgt{cursor:pointer}
 .sq.tgt::after{content:"";width:34%;height:34%;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 0 3px rgba(0,0,0,.25)}
 .sq.tgt.cap::after{background:#ffd23f}
+.sq.free{cursor:pointer}
 .die{width:80%;height:80%;border-radius:18%;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:14%;box-shadow:0 3px 0 rgba(0,0,0,.35),inset 0 2px 0 rgba(255,255,255,.35);position:relative;z-index:1;cursor:pointer}
 .die.A{background:var(--a)}.die.B{background:var(--b)}
-.die i{width:70%;height:70%;border-radius:50%;background:#fff;place-self:center;visibility:hidden}
-.die i.p{visibility:visible}
+.die i{width:70%;height:70%;border-radius:50%;background:#fff;place-self:center;visibility:hidden}.die i.p{visibility:visible}
 .die.sel{outline:4px solid #fff}.die.can{animation:pulse 1s infinite}
 @keyframes pulse{50%{transform:scale(1.07)}}
-.sq.tgt{cursor:pointer}
+#log{width:100%;max-width:560px;font-size:13px;opacity:.85;display:flex;flex-direction:column;gap:2px;padding:6px 8px}
+#over{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9}
+#over .card{background:var(--card);border-radius:18px;padding:24px;text-align:center;display:flex;flex-direction:column;gap:12px;min-width:260px}
+#over h2{margin:0;font-size:32px}
+#wait{max-width:480px;margin:0 auto;padding:24px 16px;text-align:center;display:flex;flex-direction:column;gap:14px}
+#wait .code{font-size:64px;font-weight:800;letter-spacing:10px}
+/* portrait phones: the two score panels sit side by side above the board */
+@media (max-aspect-ratio:1/1){
+  .stage{display:grid;grid-template-columns:1fr 1fr;grid-template-areas:"pb pa" "bd bd";gap:8px;justify-items:center;align-content:start}
+  #pB{grid-area:pb}#pA{grid-area:pa}#board{grid-area:bd}
+  .panel{max-width:none;width:100%;padding:8px}
+  .panel .pts{font-size:34px}
+  #board{--s:min(calc((100dvh - 270px) * 8 / 9), calc(100vw - 16px))}
+}
 </style></head><body>
-<header><h1>Vistr Draft</h1><button id="new">New game</button></header>
-<div class="bar"><div class="pl B" id="pB"></div><div class="pl A" id="pA"></div></div>
-<div id="msg"></div>
-<div id="board"></div>
+
+<div id="setup">
+  <h1>Vistr Draft</h1>
+  <p class="sub">Break through your opponent's defence. Take their dice before they take yours.</p>
+  <div class="box">
+    <b>Play</b>
+    <div class="seg"><button id="mLocal" class="on">Same screen</button><button id="mAway">Away (online)</button></div>
+    <div id="nameRow" class="hide"><input id="name" maxlength="16" placeholder="Your name"></div>
+  </div>
+  <div class="box">
+    <b>Level</b>
+    <div class="seg"><button id="lStd" class="on">Standard</button><button id="lAdv">Advanced</button></div>
+    <small id="lDesc"></small>
+  </div>
+  <div class="box" id="localGo"><button class="go" id="goLocal">Start game</button></div>
+  <div class="box hide" id="awayGo">
+    <button class="go" id="create">Create a game</button>
+    <small>You get a 4-letter code to send to your opponent.</small>
+    <div class="row"><input id="code" maxlength="4" placeholder="CODE" style="text-transform:uppercase;letter-spacing:4px;text-align:center"><button id="join" class="go">Join</button></div>
+  </div>
+  <div id="err"></div>
+  <a href="live.html">Watch live games</a>
+</div>
+
+<div id="wait" class="hide">
+  <h2>Waiting for your opponent</h2>
+  <div class="code" id="wcode"></div>
+  <div>They can type this code at <b id="wurl"></b> or open the link below.</div>
+  <div class="row"><input id="wlink" readonly><button id="copy">Copy</button></div>
+  <button id="cancelWait" class="warn">Cancel</button>
+</div>
+
+<div id="game" class="hide">
+  <div class="top"><b id="title">Vistr Draft</b><div class="btns"><button id="fs">Full screen</button><button id="resign" class="warn">Resign</button><button id="leave">Leave</button></div></div>
+  <div id="banner"></div>
+  <div class="stage">
+    <div class="panel B" id="pB"></div>
+    <div id="board"></div>
+    <div class="panel A" id="pA"></div>
+  </div>
+  <div id="log"></div>
+</div>
+<div id="over" class="hide"><div class="card"><h2 id="oTitle"></h2><div id="oSub"></div><button class="go" id="again">Play again</button><button id="oLeave">Back to menu</button></div></div>
+
 <script src="rules.js"></script>
 <script>
 (function () {
-  var R = DraftRules, g, sel = null, boardEl = document.getElementById('board');
-  var PIPS = [0, 2, 4, 6, 8]; // five-pip face
-  function name(p) { return p === 'A' ? 'Blue' : 'Red'; }
-  function start() { g = R.newGame(); sel = null; draw(); }
-  function draw() {
-    var moves = R.legal(g), caps = moves.some(function (m) { return m.cap; });
-    var from = {}; moves.forEach(function (m) { from[m.fr + ',' + m.fc] = 1; });
-    var tg = {}; if (sel) moves.forEach(function (m) { if (m.fr === sel[0] && m.fc === sel[1]) tg[m.tr + ',' + m.tc] = m.cap ? 2 : 1; });
-    boardEl.innerHTML = '';
-    for (var r = 0; r < R.H; r++) for (var c = 0; c < R.W; c++) {
-      var s = document.createElement('div'), k = r + ',' + c;
-      s.className = 'sq' + (R.dark(r, c) ? ' dk' : '') + (r > 2 && r < 6 ? ' mid' : '') + (tg[k] ? ' tgt' + (tg[k] === 2 ? ' cap' : '') : '');
-      if (g.b[r][c]) {
-        var d = document.createElement('div'); d.className = 'die ' + g.b[r][c] + (sel && sel[0] === r && sel[1] === c ? ' sel' : '') + (g.b[r][c] === g.turn && from[k] && !g.winner ? ' can' : '');
-        for (var i = 0; i < 9; i++) { var p = document.createElement('i'); if (PIPS.indexOf(i) >= 0) p.className = 'p'; d.appendChild(p); }
-        s.appendChild(d);
-      }
-      s.onclick = (function (r, c) { return function () { click(r, c); }; })(r, c);
-      boardEl.appendChild(s);
-    }
-    document.getElementById('pA').textContent = 'Blue: ' + R.count(g, 'A'); document.getElementById('pB').textContent = 'Red: ' + R.count(g, 'B');
-    document.getElementById('pA').classList.toggle('on', g.turn === 'A' && !g.winner); document.getElementById('pB').classList.toggle('on', g.turn === 'B' && !g.winner);
-    document.getElementById('msg').textContent = g.winner ? name(g.winner) + ' wins!' : name(g.turn) + ' to move' + (g.chain ? ' - keep jumping!' : caps ? ' - you must capture' : '');
+  var R = DraftRules, $ = function (i) { return document.getElementById(i); };
+  var mode = 'local', level = 'standard', S = null;   // S = what is on screen: {g, names, you, status, log, away, spectators, room}
+  var sess = null, timer = null, sel = null, busy = false, sid = Math.random().toString(36).slice(2, 12), localLog = [];
+  var NAME = { A: 'Blue', B: 'Red' };
+  var DESC = { standard: 'The game forces the rules: only legal moves, and you must capture when you can.', advanced: 'Move any die you like. If a capture was open and you stepped instead, your die is removed and your opponent scores. Nothing warns you.' };
+
+  function store(k, v) { try { if (v === undefined) return sessionStorage.getItem(k); if (v === null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch (e) {} return null; }
+  function show(id) { ['setup', 'wait', 'game'].forEach(function (x) { $(x).classList.toggle('hide', x !== id); }); }
+  function err(m) { $('err').textContent = m || ''; }
+  function setMode(m) { mode = m; $('mLocal').className = m === 'local' ? 'on' : ''; $('mAway').className = m === 'away' ? 'on' : ''; $('localGo').classList.toggle('hide', m !== 'local'); $('awayGo').classList.toggle('hide', m !== 'away'); $('nameRow').classList.toggle('hide', m !== 'away'); }
+  function setLevel(l) { level = l; $('lStd').className = l === 'standard' ? 'on' : ''; $('lAdv').className = l === 'advanced' ? 'on' : ''; $('lDesc').textContent = DESC[l]; }
+  $('mLocal').onclick = function () { setMode('local'); }; $('mAway').onclick = function () { setMode('away'); };
+  $('lStd').onclick = function () { setLevel('standard'); }; $('lAdv').onclick = function () { setLevel('advanced'); };
+
+  function api(method, path, body) {
+    var o = { method: method, headers: { 'Content-Type': 'application/json' } };
+    if (method === 'POST') o.body = JSON.stringify(body || {});
+    return fetch('/api/draft/' + path, o).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Something went wrong.'); return j; }); });
   }
-  function click(r, c) {
-    if (g.winner) return;
-    var moves = R.legal(g);
-    if (sel) {
-      var n = R.play(g, sel[0], sel[1], r, c);
-      if (n) { g = n; sel = g.chain ? g.chain.slice() : null; draw(); return; }
-    }
-    sel = (g.b[r][c] === g.turn && moves.some(function (m) { return m.fr === r && m.fc === c; })) ? [r, c] : (g.chain ? g.chain.slice() : null);
+  function nm() { return ($('name').value || '').trim(); }
+
+  /* ---------- same screen ---------- */
+  $('goLocal').onclick = function () { stopPoll(); sess = null; var g = R.newGame(level); localLog = []; S = { g: g, names: { A: 'Blue', B: 'Red' }, you: 'both', status: 'playing', log: [], away: {}, spectators: 0, level: level }; sel = null; show('game'); draw(); };
+
+  /* ---------- away ---------- */
+  $('create').onclick = function () { err(); api('POST', 'create', { level: level, name: nm() }).then(function (j) { enter(j); }).catch(function (e) { err(e.message); }); };
+  $('join').onclick = function () { err(); api('POST', 'join', { room: $('code').value, name: nm() }).then(function (j) { enter(j); }).catch(function (e) { err(e.message); }); };
+  function enter(j) { sess = { room: j.room, token: j.token, side: j.side }; store('draft.sess', JSON.stringify(sess)); history.replaceState(null, '', location.pathname); apply(j.state); startPoll(); }
+  function startPoll() { stopPoll(); timer = setInterval(poll, 1000); }
+  function stopPoll() { if (timer) clearInterval(timer); timer = null; }
+  function poll() {
+    if (!sess || busy) return;
+    var q = 'state?room=' + sess.room + '&token=' + (sess.token || '') + '&sid=' + sid;
+    api('GET', q).then(apply).catch(function (e) { if (/gone/.test(e.message)) { stopPoll(); store('draft.sess', null); err('That game has ended or expired.'); show('setup'); } });
+  }
+  function apply(st) {
+    var first = !S || S.room !== st.room;
+    S = st; S.you = st.you;
+    if (st.status === 'waiting') { show('wait'); $('wcode').textContent = st.room; var u = location.origin + location.pathname + '?join=' + st.room; $('wlink').value = u; $('wurl').textContent = location.host + location.pathname; return; }
+    if (first || $('game').classList.contains('hide')) { show('game'); sel = null; }
     draw();
   }
-  document.getElementById('new').onclick = start;
-  start();
+  $('copy').onclick = function () { $('wlink').select(); try { document.execCommand('copy'); } catch (e) {} if (navigator.clipboard) navigator.clipboard.writeText($('wlink').value); };
+  $('cancelWait').onclick = leave;
+
+  /* ---------- drawing ---------- */
+  function flip() { return S.you === 'B'; }
+  function mine() { return S.you === 'both' ? S.g.turn : S.you; }
+  function myTurn() { return S.status === 'playing' && S.you && (S.you === 'both' || S.you === S.g.turn); }
+  function msg() {
+    var g = S.g; if (g.winner) return NAME[g.winner] === undefined ? '' : S.names[g.winner] + ' wins!';
+    if (!S.you) return 'Watching: ' + S.names[g.turn] + ' (' + NAME[g.turn] + ') to move';
+    var who = S.you === 'both' ? NAME[g.turn] + ' to move' : (myTurn() ? 'Your move' : 'Waiting for ' + S.names[g.turn]);
+    if (myTurn() && g.chain) who += ' - keep jumping!';
+    else if (myTurn() && S.level === 'standard' && R.legal(g).some(function (m) { return m.cap; })) who += ' - you must capture';
+    return who;
+  }
+  function logLines() { return S.log || []; }
+  function draw() {
+    var g = S.g, level_ = S.level || level, can = myTurn(), moves = can ? R.legal(g) : [], from = {}, tg = {}, adv = level_ === 'advanced';
+    if (can && !adv) { moves.forEach(function (m) { from[m.fr + ',' + m.fc] = 1; }); if (sel) moves.forEach(function (m) { if (m.fr === sel[0] && m.fc === sel[1]) tg[m.tr + ',' + m.tc] = m.cap ? 2 : 1; }); }
+    var b = $('board'); b.innerHTML = '';
+    var fl = flip();
+    for (var i = 0; i < R.H; i++) for (var j = 0; j < R.W; j++) {
+      var r = fl ? R.H - 1 - i : i, c = fl ? R.W - 1 - j : j, k = r + ',' + c, s = document.createElement('div');
+      s.className = 'sq' + (R.dark(r, c) ? ' dk' : '') + (r > 2 && r < 6 ? ' mid' : '') + (tg[k] ? ' tgt' + (tg[k] === 2 ? ' cap' : '') : '') + (adv && can && sel && !g.b[r][c] ? ' free' : '');
+      var p = g.b[r][c];
+      if (p) {
+        var d = document.createElement('div'), mineDie = can && p === g.turn;
+        d.className = 'die ' + p + (sel && sel[0] === r && sel[1] === c ? ' sel' : '') + (mineDie && !adv && from[k] ? ' can' : '');
+        for (var q = 0; q < 9; q++) { var pip = document.createElement('i'); if (q % 2 === 0) pip.className = 'p'; d.appendChild(pip); }
+        s.appendChild(d);
+      }
+      s.onclick = (function (r, c) { return function () { tap(r, c); }; })(r, c);
+      b.appendChild(s);
+    }
+    panel('A'); panel('B');
+    $('title').textContent = 'Vistr Draft - ' + (S.level === 'advanced' ? 'Advanced' : 'Standard') + (S.room ? ' - ' + S.room : '');
+    var last = g.event && g.event.type === 'penalty';
+    $('banner').textContent = last ? lastLine() : msg(); $('banner').className = last ? 'pen' : '';
+    if (last && !g.winner) $('banner').textContent = lastLine() + '  -  ' + msg();
+    $('log').innerHTML = ''; logLines().slice(-5).reverse().forEach(function (t) { var d = document.createElement('div'); d.textContent = t; $('log').appendChild(d); });
+    $('resign').classList.toggle('hide', !S.you || S.status !== 'playing');
+    $('fs').classList.toggle('hide', !document.documentElement.requestFullscreen);
+    over();
+  }
+  function lastLine() { var l = logLines(); return l.length ? l[l.length - 1] : ''; }
+  function panel(p) {
+    var g = S.g, el = $('p' + p), n = R.count(g, p), on = !g.winner && g.turn === p;
+    el.className = 'panel ' + p + (on ? ' on' : '');
+    el.innerHTML = '<h2></h2><div class="pts">' + g.score[p] + '</div><div class="meta">points</div><div class="meta">' + n + ' dice left</div><div class="away"></div>';
+    el.querySelector('h2').textContent = S.names[p] + (S.you === p ? ' (you)' : '');
+    var aw = S.away && S.away[p]; el.querySelector('.away').textContent = aw ? 'Away - waiting for them' : (on && S.you !== p && S.you !== 'both' ? 'Thinking...' : '');
+  }
+  function over() {
+    var g = S.g, o = $('over'); if (!g.winner) { o.classList.add('hide'); return; }
+    o.classList.remove('hide');
+    var me = S.you && S.you !== 'both' ? S.you : '';
+    $('oTitle').textContent = me ? (g.winner === me ? 'You win!' : 'You lost') : S.names[g.winner] + ' wins!';
+    $('oSub').textContent = S.names.A + ' ' + g.score.A + ' - ' + g.score.B + ' ' + S.names.B;
+    $('again').classList.toggle('hide', !!S.room);
+  }
+  $('again').onclick = function () { $('goLocal').onclick(); $('over').classList.add('hide'); };
+  $('oLeave').onclick = leave;
+
+  /* ---------- playing ---------- */
+  function say(t) { localLog.push(t); S.log = localLog; }
+  function describe(out) {
+    var e = out.event; if (!e) return; var who = S.names[e.player];
+    if (e.type === 'capture') say(who + ' took a die (+' + e.pts + ')' + (out.chain ? ' and can jump again' : ''));
+    else if (e.type === 'penalty') say(who + ' ' + e.why + ': their die is removed, ' + S.names[R.other(e.player)] + ' gets +' + e.pts);
+    if (out.winner) say(S.names[out.winner] + ' wins!');
+  }
+  function tap(r, c) {
+    if (!S || !myTurn() || busy) return;
+    var g = S.g, adv = (S.level || level) === 'advanced', p = g.b[r][c];
+    if (p === g.turn && (!sel || sel[0] !== r || sel[1] !== c)) {
+      if (!adv && !R.legal(g).some(function (m) { return m.fr === r && m.fc === c; })) { sel = null; draw(); return; }
+      sel = [r, c]; draw(); return;
+    }
+    if (!sel) { return; }
+    if (p) { sel = null; draw(); return; }
+    var from = sel; sel = null;
+    if (mode === 'away' || sess) {
+      busy = true;
+      api('POST', 'move', { room: sess.room, token: sess.token, fr: from[0], fc: from[1], tr: r, tc: c }).then(function (j) { busy = false; apply(j.state); }).catch(function (e) { busy = false; toast(e.message); draw(); });
+      return;
+    }
+    var out;
+    if (adv) { var a = R.playAdvanced(g, from[0], from[1], r, c); out = a && a.g; } else out = R.play(g, from[0], from[1], r, c);
+    if (!out) { toast(adv ? 'That is not a move.' : 'Not allowed. A capture must be taken if one is open.'); draw(); return; }
+    describe(out); S.g = out; sel = out.chain ? out.chain.slice() : null; draw();
+  }
+  function toast(m) { $('banner').textContent = m; $('banner').className = 'pen'; setTimeout(function () { if (S) draw(); }, 1800); }
+  $('resign').onclick = function () {
+    if (!confirm('Resign this game?')) return;
+    if (sess) api('POST', 'resign', { room: sess.room, token: sess.token }).then(function (j) { apply(j.state); }).catch(function (e) { toast(e.message); });
+    else { var out = R.resign(S.g, S.g.turn); describe(out); S.g = out; draw(); }
+  };
+  function leave() { stopPoll(); sess = null; S = null; store('draft.sess', null); $('over').classList.add('hide'); err(''); show('setup'); }
+  $('leave').onclick = leave;
+  $('fs').onclick = function () { var d = document.documentElement; if (document.fullscreenElement) document.exitFullscreen(); else d.requestFullscreen().catch(function () {}); };
+
+  /* ---------- start up: ?join=CODE, ?watch=CODE, or a game we were in ---------- */
+  setLevel('standard'); setMode('local');
+  var qs = new URLSearchParams(location.search), nmSaved = store('draft.name');
+  if (nmSaved) $('name').value = nmSaved; $('name').onchange = function () { store('draft.name', nm()); };
+  var watch = (qs.get('watch') || '').toUpperCase(), joinc = (qs.get('join') || '').toUpperCase();
+  if (watch) { sess = { room: watch, token: '', side: '' }; startPoll(); poll(); }
+  else if (joinc) { setMode('away'); $('code').value = joinc; }
+  else { try { var old = JSON.parse(store('draft.sess') || 'null'); if (old && old.room) { sess = old; startPoll(); poll(); } } catch (e) {} }
 })();
 </script></body></html>

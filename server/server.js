@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const store = require('./store');
+const draft = require('./draft');
 let dict;
 try {
   dict = require('./dictionary');
@@ -897,6 +898,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, cors()); return res.end(); }
   if (url.pathname.startsWith('/ad-images/')) return serveAdImage(res, url);
   if (!url.pathname.startsWith('/api/')) return serveStatic(req, res, url);
+  if (url.pathname.startsWith('/api/draft/')) { await draft.handle(req, res, url, send, readBody); return; }   // Vistr Draft away play (guests allowed)
   const key = `${req.method} ${url.pathname}`;
   const handler = routes[key];
   if (!handler) return send(res, 404, { error: 'Unknown API route.' });

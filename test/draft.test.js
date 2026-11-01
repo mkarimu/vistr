@@ -24,3 +24,23 @@ for (r = 0; r < 9; r++) x.b.push(['', '', '', '', '', '', '', '']);
 x.b[2][1] = 'A'; x.b[1][2] = 'B';
 x = R.play(x, 2, 1, 0, 3); ok(x.winner === 'A', 'last die taken wins');
 console.log(n + ' draft checks done');
+// scoring and the advanced level
+(function () {
+  var g = R.newGame('advanced'); ok(g.level === 'advanced' && g.score.A === 0, 'new advanced game');
+  ok(R.playAdvanced(g, 6, 1, 3, 4) === null, 'a non-move is ignored, no penalty');
+  ok(R.playAdvanced(g, 0, 1, 1, 0) === null, 'cannot move the opponent');
+  ok(R.playAdvanced(g, 6, 1, 7, 1) === null, 'only empty squares count');
+  ok(R.playAdvanced(g, 6, 1, 5, 0).wrong === '', 'normal step is fine');
+  var t = { b: [], turn: 'A', chain: null, winner: '', level: 'advanced', score: { A: 0, B: 0 }, event: null, moves: 0 }, r;
+  for (r = 0; r < 9; r++) t.b.push(['', '', '', '', '', '', '', '']);
+  t.b[8][1] = 'A'; t.b[7][2] = 'B'; t.b[6][5] = 'A'; t.b[0][1] = 'B';
+  var miss = R.playAdvanced(t, 6, 5, 5, 4);  // a legal step while a capture exists
+  ok(miss.wrong === 'missed a capture' && miss.g.b[8][1] === '' && miss.g.b[6][5] === 'A' && miss.g.score.B === 2, 'missed capture removes the die that could capture');
+  var good = R.playAdvanced(t, 8, 1, 6, 3); ok(good.wrong === '' && good.g.score.A === 1, 'capture scores 1');
+  var last = { b: [], turn: 'A', chain: null, winner: '', level: 'standard', score: { A: 0, B: 0 }, event: null, moves: 0 };
+  for (r = 0; r < 9; r++) last.b.push(['', '', '', '', '', '', '', '']);
+  last.b[2][1] = 'A'; last.b[1][2] = 'B';
+  var e = R.play(last, 2, 1, 0, 3); ok(e.winner === 'A' && e.score.A === 1 + R.PTS.win, 'winner bonus');
+  var rs = R.resign(R.newGame(), 'A'); ok(rs.winner === 'B', 'resign');
+  console.log('advanced checks done');
+})();
