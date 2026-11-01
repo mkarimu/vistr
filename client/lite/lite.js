@@ -179,8 +179,8 @@
   // ---------- the ribbon, scores and chain ----------
   function renderUnits() {
     const g = G, n = g.units.length, on = i => (g.status === 'play' && i === g.turn);
-    const A = $('ribA'), B = $('ribB'), L = $('colL'), R = $('colR');
-    A.textContent = ''; B.textContent = ''; L.textContent = ''; R.textContent = '';
+    const A = $('ribA'), B = $('ribB'), L = $('colL'), R = $('colR'), strip = $('strip');
+    A.textContent = ''; B.textContent = ''; L.textContent = ''; R.textContent = ''; strip.textContent = '';
     if (n <= 2) {
       [A, B].forEach((slot, i) => { const u = g.units[i]; if (!u) return; slot.appendChild(el('div', 'blk' + (on(i) ? ' on' : ''), '<span class="nm">' + esc(u.name) + '</span>' + (n === 1 ? '<small class="prog">' + Math.min(g.turnNo + 1, g.total) + '/' + g.total + '</small>' : '') + '<b>' + String(u.score).padStart(2, '0') + '</b>')).style.setProperty('--c', u.color); });
     } else {
@@ -189,6 +189,7 @@
       g.units.forEach((u, i) => {
         const l = el('div', 'cell' + (on(i) ? ' on' : ''), esc(u.name)), r = el('div', 'cell sc' + (on(i) ? ' on' : ''), String(u.score).padStart(2, '0'));
         l.style.setProperty('--c', u.color); r.style.setProperty('--c', u.color); L.appendChild(l); R.appendChild(r);
+        const chip = el('div', 'chip' + (on(i) ? ' on' : ''), '<span>' + esc(u.name) + '</span><b>' + String(u.score).padStart(2, '0') + '</b>'); chip.style.setProperty('--c', u.color); strip.appendChild(chip);
       });
     }
     const ch = $('chain'); ch.textContent = '';

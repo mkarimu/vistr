@@ -111,3 +111,17 @@ body.classroom .col { padding: 6dvh 0 2dvh; }
 .drum.focus .face { outline: 3px dashed rgba(255, 247, 236, .55); outline-offset: 3px; }
 .blk .prog { font-size: .55em; opacity: .75; font-weight: 700; }
 #adSlot2 { min-height: 90px; margin-top: 16px; }
+
+/* standard mode (classroom mode off): the original Vistr look - a centred column, not the whole screen */
+.strip { display: none; }
+body:not(.classroom) { --fs: clamp(13px, 3.4vw, 16px); }
+body:not(.classroom) .play { display: flex; flex-direction: column; height: auto; min-height: 100dvh; max-width: 620px; margin: 0 auto; overflow: visible; }
+body:not(.classroom) .rib { flex-wrap: wrap; justify-content: center; border-radius: 0 0 16px 16px; }
+body:not(.classroom) .board { display: block; height: clamp(280px, 46dvh, 420px); padding: 10px 12px 0; flex: none; }
+body:not(.classroom) .col { display: none; }
+body:not(.classroom) .drums { height: 100%; }
+body:not(.classroom) .face span { font-size: min(56cqw, 7.5dvh); } body:not(.classroom) .face .dim { font-size: min(44cqw, 5.5dvh); }
+body:not(.classroom) .play.multi .strip { display: flex; gap: 6px; padding: 8px 12px 0; flex-wrap: wrap; justify-content: center; }
+.chip { display: flex; align-items: center; gap: 8px; background: var(--c); color: var(--ink); font-weight: 800; border-radius: 12px; padding: 4px 10px; } .chip b { background: var(--cream); border-radius: 8px; padding: 0 8px; } .chip.on { box-shadow: 0 0 0 3px var(--cream); }
+body:not(.classroom) .bottom { padding: 14px 0 8px; }
+body:not(.classroom) .blk.turn .nm { display: none; } body:not(.classroom) .blk.turn { justify-content: center; }
