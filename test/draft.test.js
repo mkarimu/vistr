@@ -44,3 +44,23 @@ console.log(n + ' draft checks done');
   var rs = R.resign(R.newGame(), 'A'); ok(rs.winner === 'B', 'resign');
   console.log('advanced checks done');
 })();
+// kings
+(function () {
+  var r, t = { b: [], turn: 'A', chain: null, winner: '', level: 'standard', score: { A: 0, B: 0 }, event: null, moves: 0 };
+  for (r = 0; r < 9; r++) t.b.push(['', '', '', '', '', '', '', '']);
+  t.b[1][2] = 'A'; t.b[8][1] = 'B'; t.b[7][4] = 'A';
+  var c = R.play(t, 1, 2, 0, 1); ok(c && c.k[0][1] && c.event.crowned && R.countKings(c, 'A') === 1, 'reaching the far row crowns');
+  var back = R.play({ b: c.b, k: c.k, turn: 'A', chain: null, winner: '', level: 'standard', score: c.score, event: null, moves: 5 }, 0, 1, 1, 0);
+  ok(back && back.k[1][0] && !back.k[0][1], 'a king steps backward and stays a king');
+  var m = R.play(t, 7, 4, 6, 3); ok(m && !m.k[6][3], 'ordinary dice are not crowned early');
+  // a king captures backward; crowning ends a capture chain
+  var k = { b: [], k: [], turn: 'A', chain: null, winner: '', level: 'standard', score: { A: 0, B: 0 }, event: null, moves: 0 };
+  for (r = 0; r < 9; r++) { k.b.push(['', '', '', '', '', '', '', '']); k.k.push([false, false, false, false, false, false, false, false]); }
+  k.b[4][3] = 'A'; k.k[4][3] = true; k.b[5][4] = 'B'; k.b[0][1] = 'B';
+  var bc = R.play(k, 4, 3, 6, 5); ok(bc && bc.b[5][4] === '' && bc.k[6][5] && bc.score.A === 1, 'king captures backward');
+  var man = { b: [], turn: 'A', chain: null, winner: '', level: 'standard', score: { A: 0, B: 0 }, event: null, moves: 0 };
+  for (r = 0; r < 9; r++) man.b.push(['', '', '', '', '', '', '', '']);
+  man.b[2][1] = 'A'; man.b[1][2] = 'B'; man.b[1][4] = 'B'; man.b[8][7] = 'B';
+  var cr = R.play(man, 2, 1, 0, 3); ok(cr && cr.event.crowned && cr.turn === 'B' && !cr.chain, 'crowning ends the turn');
+  console.log('king checks done');
+})();

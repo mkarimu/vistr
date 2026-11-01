@@ -336,6 +336,7 @@
       S.players = d.players; S.lobby = d.lobby; S.playersSkew = d.serverNow - Date.now();
       if (S.screen === 'home') renderPlayers();
     });
+    window.VistrChat?.attach(es, { api, toast, t });   // player chat (client/chat.js)
     on('request', showRequest);
     on('request-ended', onRequestEnded);
     on('match', m => { S.match = m; if (m.status === 'pending') showReady(); else if (S.screen === 'game') { renderOpponent(); onBoard(m); } });
@@ -1450,12 +1451,12 @@
 
   // ───────────────────────── boot ─────────────────────────
   function signedOut() { // Sign out button: end the session but keep the Player ID for next time
-    S.token = null; S.player = null; S.record = null; saved('vistr.token', null); saved('vistr.signedOut', '1');
+    S.token = null; S.player = null; S.record = null; saved('vistr.token', null); saved('vistr.signedOut', '1'); window.VistrChat?.reset();
     try { sessionStorage.removeItem('vistr.token'); } catch (_) {}
     goStandalone();
   }
   function forgetPlayer() { // the player deleted their ID: nothing about it stays on this device
-    S.token = null; S.player = null; S.record = null;
+    S.token = null; S.player = null; S.record = null; window.VistrChat?.reset();
     ['vistr.token', 'vistr.lastId', 'vistr.signedOut'].forEach(k => saved(k, null));
     try { sessionStorage.removeItem('vistr.token'); } catch (_) {}
     goStandalone();

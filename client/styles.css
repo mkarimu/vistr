@@ -861,3 +861,26 @@ dialog.reader[open] { display: flex; }
 
 /* a game the Memoryq super-admin has not made public yet: no card on the home screen */
 .no-missing [data-games-card], .no-missing a.menu-game[href="missing/"] { display: none !important; }
+
+/* ── player chat (opens when an invite is accepted) ── */
+.chat-fab { position: fixed; right: 14px; bottom: calc(var(--ad-h, 0px) + 14px + env(safe-area-inset-bottom)); z-index: 60; border: 0; border-radius: 999px; padding: 12px 18px; font: inherit; font-weight: 800; background: var(--sky); color: var(--ink); box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+.chat-fab.has { background: var(--sunshine); animation: chat-pulse 1.2s ease-in-out infinite; }
+@keyframes chat-pulse { 50% { transform: scale(1.06); } }
+.chat-panel { position: fixed; right: 12px; bottom: calc(var(--ad-h, 0px) + 66px + env(safe-area-inset-bottom)); z-index: 61; width: min(380px, calc(100vw - 24px)); height: min(460px, calc(100dvh - var(--ad-h, 0px) - 130px)); display: flex; flex-direction: column; background: var(--night-2); border: 2px solid var(--line); border-radius: 18px; box-shadow: 0 12px 34px rgba(0,0,0,.5); overflow: hidden; color: var(--cream); }
+.chat-panel[hidden], .chat-fab[hidden] { display: none; }
+.chat-top { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.chat-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-x { border: 0; background: transparent; color: var(--cream); font-size: 22px; line-height: 1; padding: 2px 8px; }
+.chat-list { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding: 10px; }
+.chat-row { display: flex; justify-content: space-between; gap: 8px; border: 0; border-radius: 12px; padding: 12px; background: rgba(255,255,255,.08); color: var(--cream); font: inherit; text-align: left; }
+.chat-meta { color: var(--mute); font-size: 13px; }
+.chat-msgs { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding: 10px; }
+.chat-msg { max-width: 80%; padding: 8px 12px; border-radius: 14px; overflow-wrap: anywhere; font-size: 15px; }
+.chat-msg.me { align-self: flex-end; background: var(--sky); color: var(--ink); border-bottom-right-radius: 4px; }
+.chat-msg.them { align-self: flex-start; background: rgba(255,255,255,.14); border-bottom-left-radius: 4px; }
+.chat-msg.sys { align-self: center; max-width: 95%; text-align: center; background: transparent; color: var(--mute); font-size: 13px; }
+.chat-form { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); }
+.chat-form input { flex: 1; min-width: 0; border: 0; border-radius: 10px; padding: 10px 12px; font: inherit; }
+.chat-send { border: 0; border-radius: 10px; padding: 10px 14px; font: inherit; font-weight: 800; background: var(--lime); color: var(--ink); }
+.chat-end { border: 0; background: transparent; color: var(--mute); font: inherit; font-size: 13px; padding: 6px 10px 10px; text-decoration: underline; }
+.chat-end.ask { color: var(--sunshine); font-weight: 700; }

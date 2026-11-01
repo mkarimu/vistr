@@ -24,6 +24,7 @@ function describe(r, before, after) {
   if (e.type === 'capture') say(r, `${who} took a die (+${e.pts})` + (after.chain ? ' and can jump again' : ''));
   else if (e.type === 'penalty') say(r, `${who} ${e.why}: their die is removed, ${r.names[R.other(e.player)]} gets +${e.pts}`);
   else if (e.type === 'resign') say(r, `${who} resigned`);
+  if (e.crowned) say(r, `${who} crowned a die - it can now move in every direction`);
   if (after.winner) say(r, `${r.names[after.winner]} wins!`);
 }
 function view(r, side, sid) {

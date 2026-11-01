@@ -43,6 +43,10 @@ a{color:#9cc4ff}
 .die{width:80%;height:80%;border-radius:18%;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:14%;box-shadow:0 3px 0 rgba(0,0,0,.35),inset 0 2px 0 rgba(255,255,255,.35);position:relative;z-index:1;cursor:pointer}
 .die.A{background:var(--a)}.die.B{background:var(--b)}
 .die i{width:70%;height:70%;border-radius:50%;background:#fff;place-self:center;visibility:hidden}.die i.p{visibility:visible}
+.crown{position:absolute;left:6%;right:6%;top:-11%;width:88%;height:auto;z-index:2;filter:drop-shadow(0 2px 0 rgba(0,0,0,.45));animation:pop .5s}
+.die.A .crown path{fill:#ffd23f}.die.B .crown path{fill:#f4f6ff}.crown circle{fill:#ff5d8f}.die.B .crown circle{fill:#2f7de1}
+.die.king{box-shadow:0 3px 0 rgba(0,0,0,.35),inset 0 2px 0 rgba(255,255,255,.35),0 0 0 3px rgba(255,255,255,.35)}
+@keyframes pop{0%{transform:translateY(-120%) scale(.4);opacity:0}70%{transform:translateY(8%) scale(1.15)}100%{transform:none;opacity:1}}
 .die.sel{outline:4px solid #fff}.die.can{animation:pulse 1s infinite}
 @keyframes pulse{50%{transform:scale(1.07)}}
 #log{width:100%;max-width:560px;font-size:13px;opacity:.85;display:flex;flex-direction:column;gap:2px;padding:6px 8px}
@@ -111,6 +115,7 @@ a{color:#9cc4ff}
   var mode = 'local', level = 'standard', S = null;   // S = what is on screen: {g, names, you, status, log, away, spectators, room}
   var sess = null, timer = null, sel = null, busy = false, sid = Math.random().toString(36).slice(2, 12), localLog = [];
   var NAME = { A: 'Blue', B: 'Red' };
+  var CROWN = '<svg class="crown" viewBox="0 0 40 26"><path d="M2 24 L5 6 L14 15 L20 2 L26 15 L35 6 L38 24 Z" stroke="#222" stroke-width="1.5" stroke-linejoin="round"/><circle cx="5" cy="6" r="2.6"/><circle cx="20" cy="3" r="2.6"/><circle cx="35" cy="6" r="2.6"/></svg>';
   var DESC = { standard: 'The game forces the rules: only legal moves, and you must capture when you can.', advanced: 'Move any die you like. If a capture was open and you stepped instead, your die is removed and your opponent scores. Nothing warns you.' };
 
   function store(k, v) { try { if (v === undefined) return sessionStorage.getItem(k); if (v === null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch (e) {} return null; }
@@ -177,6 +182,7 @@ a{color:#9cc4ff}
       if (p) {
         var d = document.createElement('div'), mineDie = can && p === g.turn;
         d.className = 'die ' + p + (sel && sel[0] === r && sel[1] === c ? ' sel' : '') + (mineDie && !adv && from[k] ? ' can' : '');
+        if (g.k && g.k[r][c]) { d.classList.add('king'); d.insertAdjacentHTML('afterbegin', CROWN); }
         for (var q = 0; q < 9; q++) { var pip = document.createElement('i'); if (q % 2 === 0) pip.className = 'p'; d.appendChild(pip); }
         s.appendChild(d);
       }
@@ -185,7 +191,7 @@ a{color:#9cc4ff}
     }
     panel('A'); panel('B');
     $('title').textContent = 'Vistr Draft - ' + (S.level === 'advanced' ? 'Advanced' : 'Standard') + (S.room ? ' - ' + S.room : '');
-    var last = g.event && g.event.type === 'penalty';
+    var last = g.event && (g.event.type === 'penalty' || g.event.crowned);
     $('banner').textContent = last ? lastLine() : msg(); $('banner').className = last ? 'pen' : '';
     if (last && !g.winner) $('banner').textContent = lastLine() + '  -  ' + msg();
     $('log').innerHTML = ''; logLines().slice(-5).reverse().forEach(function (t) { var d = document.createElement('div'); d.textContent = t; $('log').appendChild(d); });
@@ -197,7 +203,7 @@ a{color:#9cc4ff}
   function panel(p) {
     var g = S.g, el = $('p' + p), n = R.count(g, p), on = !g.winner && g.turn === p;
     el.className = 'panel ' + p + (on ? ' on' : '');
-    el.innerHTML = '<h2></h2><div class="pts">' + g.score[p] + '</div><div class="meta">points</div><div class="meta">' + n + ' dice left</div><div class="away"></div>';
+    el.innerHTML = '<h2></h2><div class="pts">' + g.score[p] + '</div><div class="meta">points</div><div class="meta">' + n + ' dice left' + (R.countKings(g, p) ? ' (' + R.countKings(g, p) + ' crowned)' : '') + '</div><div class="away"></div>';
     el.querySelector('h2').textContent = S.names[p] + (S.you === p ? ' (you)' : '');
     var aw = S.away && S.away[p]; el.querySelector('.away').textContent = aw ? 'Away - waiting for them' : (on && S.you !== p && S.you !== 'both' ? 'Thinking...' : '');
   }
@@ -218,6 +224,7 @@ a{color:#9cc4ff}
     var e = out.event; if (!e) return; var who = S.names[e.player];
     if (e.type === 'capture') say(who + ' took a die (+' + e.pts + ')' + (out.chain ? ' and can jump again' : ''));
     else if (e.type === 'penalty') say(who + ' ' + e.why + ': their die is removed, ' + S.names[R.other(e.player)] + ' gets +' + e.pts);
+    if (e.crowned) say(who + ' crowned a die - it can now move in every direction');
     if (out.winner) say(S.names[out.winner] + ' wins!');
   }
   function tap(r, c) {

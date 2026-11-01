@@ -7,6 +7,7 @@ const path = require('path');
 const crypto = require('crypto');
 const store = require('./store');
 const draft = require('./draft');
+const chatMod = require('./chat');
 let dict;
 try {
   dict = require('./dictionary');
@@ -485,7 +486,9 @@ function serveAdImage(res, url) {
   });
 }
 
+const chat = chatMod.create({ push, store, send });   // player-to-player chat, opened when an invite is accepted
 const routes = {
+  ...chat.routes,
   // Games played, for the home screen: { total, today }. Admin key adds the breakdown.
   'GET /api/stats': async (req, res, { url }) => {
     const st = store.gameStats();
@@ -824,6 +827,7 @@ const routes = {
       if (old) finishMatch(old, 'switched');
     }
     const m = createMatch(r.level, [fromId, me.id], r.intensity, r.lang);
+    chat.open(fromId, me.id);
     push(fromId, 'request-ended', { reason: 'accepted', by: me.code, from: store.getPlayer(fromId).code, to: me.code });
     broadcastMatch(m, 'match');
     send(res, 200, { match: matchView(m, me.id) });
