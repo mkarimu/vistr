@@ -16,3 +16,14 @@ window.LITE_ADMOB = {
   maxAdContentRating: 'G',
   nonPersonalized: true,
 };
+
+// Google AdSense on the web page: ONE ad, on the page that appears when a game ends (never during play).
+// client = the AdSense publisher id (it is public: it is also in app-ads.txt).
+// slot   = the number of a display ad unit: AdSense -> Ads -> By ad unit -> Display ads -> create one, then copy
+//          the number after data-ad-slot= into 'slot' below. Until then no ad is shown.
+// The ad is requested as non-personalised and for children (data-tag-for-age-treatment).
+window.LITE_ADS = {
+  enabled: true,
+  client: 'ca-pub-2298775225198657',
+  slot: '',
+};

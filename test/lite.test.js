@@ -109,6 +109,17 @@ ok('nothing can be done after the game is over', C.giveUp(g, 0) === null && C.pr
 // ---- teacher PIN
 ok('the teacher PIN: right, wrong and not set', C.pinOk(cfgP, '1234') && !C.pinOk(cfgP, '1235') && !C.pinOk(C.settings({}), '') && !C.pinOk(C.settings({}), '0000'));
 
+// ---- one player on their own (the wide screen is for solo play too)
+const cfgS = C.settings({ mode: 'teams', count: 1, turnsEach: 3, turnSecs: 20 });
+ok('one side is always a player, and 1 is allowed (0 becomes 1, 9 becomes 4)', cfgS.count === 1 && cfgS.mode === 'players' && C.settings({ count: 0 }).count === 1 && C.settings({ count: 9 }).count === 4);
+ok('a solo round is turns x seconds', C.roundSeconds(cfgS) === 60);
+g = C.newGame(cfgS, E, dict, fixed('crane'), 0);
+ok('solo: one unit, one letter per move', g.units.length === 1 && !g.team && g.slots === 1 && g.total === 3);
+rollTo(g, 3, 't'); r = C.processMove(g, 1000);
+ok('solo: a real word scores and the turn comes straight back', r.outcome === 'valid' && g.units[0].score === r.points && g.turn === 0 && g.status === 'play' && C.msLeft(g, 1000) === 20000);
+C.tick(g, 25000); C.tick(g, 46000);
+ok('solo: the game ends after its turns, with one winner row', g.status === 'over' && g.result.ranking.length === 1 && g.result.winners[0] === 0 && g.result.reason === 'done');
+
 // ---- a real random start word from the lists plays
 g = C.newGame(C.settings({ count: 2 }), E, dict, pick, 0);
 const nb = E.neighbours(g.current, dict);

@@ -1,6 +1,6 @@
 # Vistr Lite 0.1
 
-A pass-and-play word game for one screen (the classroom): 2 to 4 players or teams take turns on the same board.
+A pass-and-play word game for one screen (the classroom): 1 to 4 players or teams (one player = solo) take turns on the same board.
 Lives in the Vistr project and server (`client/lite`), opened at `vistr.memoryq.com/lite/`.
 
 * `core.js`   - the rules (no screen, no timers): turns, scoring, the team lock, pause, the fair-reset loss. Tested by `test/lite.test.js`.
@@ -11,3 +11,6 @@ Lives in the Vistr project and server (`client/lite`), opened at `vistr.memoryq.
 Rules in short: a player changes exactly one letter per move; a team move can change two (one for each teammate, the second drum touched locks the rest);
 the side that presses Reset before the game is over loses, unless the teacher's PIN confirms a frozen screen or the end of the lesson.
 Not in 0.1: online (away) play, Android app, interface translations (the word lists are English, Spanish, French, Portuguese and Kiswahili).
+
+Ads: one Google AdSense ad, only on the results page (loaded when a game ends; the next game starts from a clean page so no ad script runs during play).
+Set `slot` in `config.js` (an AdSense display ad unit number) to switch it on. Requested non-personalised and for children.

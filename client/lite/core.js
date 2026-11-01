@@ -9,14 +9,14 @@
   'use strict';
 
   const COLORS = ['#a8e44a', '#ff5fa8', '#45c8f5', '#ffd23f'];
-  const LIMITS = { minUnits: 2, maxUnits: 4, minTurns: 1, maxTurns: 10, minSecs: 10, maxSecs: 120 };
+  const LIMITS = { minUnits: 1, maxUnits: 4, minTurns: 1, maxTurns: 10, minSecs: 10, maxSecs: 120 };
 
   const clamp = (v, lo, hi, d) => { v = Math.round(Number(v)); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
 
   // Cleans the settings the teacher chose.
   function settings(c = {}) {
-    const mode = c.mode === 'teams' ? 'teams' : 'players';
     const count = clamp(c.count, LIMITS.minUnits, LIMITS.maxUnits, 2);
+    const mode = c.mode === 'teams' && count > 1 ? 'teams' : 'players';   // one side on its own is always a player
     const names = [];
     for (let i = 0; i < LIMITS.maxUnits; i++) {
       const fallback = (mode === 'teams' ? 'Team ' : 'Player ') + 'ABCD'[i];

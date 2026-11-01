@@ -49,9 +49,9 @@
   function drawSetup() {
     const c = C.settings(cfg), team = c.mode === 'teams';
     $('swClass').setAttribute('aria-checked', String(!!cfg.classroom));
-    seg('segMode', [['players', 'Players'], ['teams', 'Teams']], () => cfg.mode, v => { cfg.mode = v; });
+    seg('segMode', [['players', 'Players'], ['teams', 'Teams']], () => c.mode, v => { cfg.mode = v; if (v === 'teams' && C.settings(cfg).count < 2) cfg.count = 2; });
     $('lblCount').textContent = team ? 'How many teams' : 'How many players';
-    seg('segCount', [2, 3, 4].map(n => [n, String(n)]), () => c.count, v => { cfg.count = v; });
+    seg('segCount', [1, 2, 3, 4].map(n => [n, String(n)]), () => c.count, v => { cfg.count = v; if (v === 1) cfg.mode = 'players'; });
     const names = $('names'); names.textContent = '';
     for (let i = 0; i < c.count; i++) {
       const inp = el('input'); inp.type = 'text'; inp.maxLength = 14; inp.value = cfg.names[i] || '';
@@ -65,7 +65,7 @@
     seg('segSecs', [20, 30, 45, 60].map(n => [n, n + ' s']), () => c.turnSecs, v => { cfg.turnSecs = v; });
     seg('segTurns', [3, 4, 5, 6].map(n => [n, String(n)]), () => c.turnsEach, v => { cfg.turnsEach = v; });
     $('inPin').value = cfg.pin || '';
-    $('roundInfo').textContent = c.count + (team ? ' teams' : ' players') + ' x ' + c.turnsEach + ' turns x ' + c.turnSecs + ' s = about ' + fmt(C.roundSeconds(c));
+    $('roundInfo').textContent = c.count + (team ? ' teams' : c.count === 1 ? ' player' : ' players') + ' x ' + c.turnsEach + ' turns x ' + c.turnSecs + ' s = about ' + fmt(C.roundSeconds(c));
   }
   (function fillLangs() {
     const s = $('selLang');
@@ -81,6 +81,7 @@
 
   function show(which) {
     ['setup', 'play', 'results'].forEach(id => { $(id).hidden = id !== which; });
+    if (which !== 'results') { const ad = $('adSlot2'); ad.textContent = ''; ad.hidden = true; }
     document.body.classList.toggle('classroom', which === 'play' && !!(G && G.cfg.classroom));
   }
   function say(text, kind) {
@@ -93,6 +94,10 @@
   async function keepAwake(on) { try { if (on && navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); else if (wake) { wake.release(); wake = null; } } catch (e) { /* ignore */ } }
 
   async function startGame() {
+    if (adsLoaded) {   // an ad script was loaded on the results page: start from a clean page so no ad can appear during play
+      try { sessionStorage.setItem('vistrlite.autostart', '1'); } catch (e) { /* ignore */ }
+      location.reload(); return;
+    }
     const c = C.settings(cfg);
     setMsg('Getting the words ready...');
     let d;
@@ -101,7 +106,7 @@
     clearTimeout(resultsT);
     try { G = C.newGame(c, E, d.words[c.len], picker(d, c.len, c.intensity), Date.now()); } catch (e) { setMsg(e.message); return; }
     show('play'); buildDrums(); focus = -1;
-    $('play').className = 'screen play ' + (c.count > 2 ? 'multi' : 'n2');
+    $('play').className = 'screen play ' + (c.count > 2 ? 'multi' : c.count === 2 ? 'n2' : 'n1');
     $('overlay').hidden = true; $('toast').className = 'toast';
     renderAll(); clearInterval(timer); timer = setInterval(frame, 200);
     keepAwake(true);
@@ -176,8 +181,8 @@
     const g = G, n = g.units.length, on = i => (g.status === 'play' && i === g.turn);
     const A = $('ribA'), B = $('ribB'), L = $('colL'), R = $('colR');
     A.textContent = ''; B.textContent = ''; L.textContent = ''; R.textContent = '';
-    if (n === 2) {
-      [A, B].forEach((slot, i) => { const u = g.units[i]; slot.appendChild(el('div', 'blk' + (on(i) ? ' on' : ''), '<span class="nm">' + esc(u.name) + '</span><b>' + String(u.score).padStart(2, '0') + '</b>')).style.setProperty('--c', u.color); });
+    if (n <= 2) {
+      [A, B].forEach((slot, i) => { const u = g.units[i]; if (!u) return; slot.appendChild(el('div', 'blk' + (on(i) ? ' on' : ''), '<span class="nm">' + esc(u.name) + '</span>' + (n === 1 ? '<small class="prog">' + Math.min(g.turnNo + 1, g.total) + '/' + g.total + '</small>' : '') + '<b>' + String(u.score).padStart(2, '0') + '</b>')).style.setProperty('--c', u.color); });
     } else {
       const t = el('div', 'blk turn', '<span class="nm">Turn: ' + esc(g.units[g.turn].name) + '</span><b id="turnSecs">0</b>');
       A.appendChild(t);
@@ -196,8 +201,8 @@
     if (ev) { say(ev.message, 'bad'); $('drums').classList.remove('good'); renderAll(); if (G.status === 'over') scheduleResults(); return; }
     const left = C.msLeft(G, now), secs = Math.ceil(left / 1000), n = G.units.length;
     const roundMs = left + Math.max(0, G.total - G.turnNo - 1) * G.cfg.turnSecs * 1000;
-    $('clock').textContent = n === 2 ? fmt(secs) : fmt(Math.ceil(roundMs / 1000));
-    $('clock').classList.toggle('low', n === 2 && secs <= 5 && G.status === 'play');
+    $('clock').textContent = n <= 2 ? fmt(secs) : fmt(Math.ceil(roundMs / 1000));
+    $('clock').classList.toggle('low', n <= 2 && secs <= 5 && G.status === 'play');
     const ts = $('turnSecs'); if (ts) ts.textContent = String(secs);
     const fill = $('tbarFill'); fill.style.width = (G.status === 'play' ? Math.min(100, left / (G.cfg.turnSecs * 10)) : 0) + '%'; fill.classList.toggle('low', secs <= 5);
   }
@@ -214,13 +219,52 @@
     if (G.status === 'over') scheduleResults();
   }
 
+  // ---------- Google ads (AdSense): only on the page that appears when a game ends ----------
+  const ADS = window.LITE_ADS || {};
+  let adsLoaded = false;
+  function showAds() {
+    const box = $('adSlot2'); box.textContent = '';
+    if (!ADS.enabled || !/^ca-pub-\d+$/.test(ADS.client || '')) { box.hidden = true; return; }
+    box.hidden = false;
+    try {
+      window.adsbygoogle = window.adsbygoogle || [];
+      window.adsbygoogle.requestNonPersonalizedAds = 1;               // classrooms: no personalised ads
+      if (!adsLoaded) {
+        const sc = document.createElement('script');
+        sc.async = true; sc.crossOrigin = 'anonymous';
+        sc.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + ADS.client;
+        document.head.appendChild(sc); adsLoaded = true;
+      }
+      if (/^\d{6,15}$/.test(ADS.slot || '')) {
+        const ins = el('ins', 'adsbygoogle'); ins.style.display = 'block';
+        ins.setAttribute('data-ad-client', ADS.client); ins.setAttribute('data-ad-slot', ADS.slot);
+        ins.setAttribute('data-ad-format', 'auto'); ins.setAttribute('data-full-width-responsive', 'true');
+        ins.setAttribute('data-tag-for-age-treatment', '1');          // treat as directed at children
+        box.appendChild(ins); window.adsbygoogle.push({});
+      }
+    } catch (e) { box.hidden = true; }
+  }
+  // The best solo score on this device, per word length, level and turn length.
+  function bestScore(c, score) {
+    const key = 'vistrlite.best.' + [c.len, c.intensity, c.turnSecs, c.turnsEach, c.lang].join('.');
+    let old = null;
+    try { old = Number(localStorage.getItem(key)); if (!Number.isFinite(old) || localStorage.getItem(key) === null) old = null; } catch (e) { old = null; }
+    const isNew = old === null || score > old;
+    if (isNew) { try { localStorage.setItem(key, String(score)); } catch (e) { /* ignore */ } }
+    return { isNew: isNew && old !== null ? true : false, value: isNew ? score : old };
+  }
+
   // ---------- results ----------
   function scheduleResults() { clearTimeout(resultsT); resultsT = setTimeout(showResults, 1800); }
   function showResults() {
     if (!G || G.status !== 'over') return;
     const res = G.result, u = G.units;
     let title, note;
-    if (res.reason === 'forfeit') {
+    if (u.length === 1) {
+      const best = bestScore(G.cfg, u[0].score);
+      title = 'Well played!';
+      note = u[0].name + ': ' + u[0].score + ' point' + (u[0].score === 1 ? '' : 's') + ', ' + u[0].words + ' word' + (u[0].words === 1 ? '' : 's') + '. ' + (best.isNew ? 'A new best score!' : 'Best so far: ' + best.value + '.');
+    } else if (res.reason === 'forfeit') {
       title = (res.winners.length === 1 ? u[res.winners[0]].name : 'The others') + ' win' + (res.winners.length === 1 ? 's' : '') + '!';
       note = u[res.forfeit].name + ' pressed Reset before the game was over, so they lose.';
     } else {
@@ -233,7 +277,7 @@
       const x = u[r.idx], li = el('li', res.winners.includes(r.idx) ? 'win' : '', '<span>' + r.rank + '.</span> <span>' + esc(x.name) + (x.gaveUp ? ' <small>(pressed Reset)</small>' : '') + '<br><small>' + x.words + ' word' + (x.words === 1 ? '' : 's') + '</small></span><b>' + x.score + '</b>');
       li.style.setProperty('--c', x.color); list.appendChild(li);
     });
-    show('results'); leaveFullscreen(); keepAwake(false);
+    show('results'); leaveFullscreen(); keepAwake(false); showAds();
   }
   $('bAgain').onclick = () => { if (cfg.classroom) tryFullscreen(); startGame(); };
   $('bSettings').onclick = toSetup;
@@ -266,13 +310,17 @@
     if (!G) return;
     if (G.status === 'over') { toSetup(); return; }
     holdClock();
-    if (G.cfg.pin) { askPin('Leave the game?', 'The game is not finished. Only the teacher can leave it: enter the teacher PIN.', toSetup); return; }
+    if (G.units.length > 1 && G.cfg.pin) { askPin('Leave the game?', 'The game is not finished. Only the teacher can leave it: enter the teacher PIN.', toSetup); return; }
     dialog({ title: 'Leave the game?', text: 'The game is not finished and will be lost.', buttons: [{ label: 'Leave the game', cls: 'danger', fn: () => { closeModal(); toSetup(); } }, { label: 'Stay', cls: 'quiet', fn: () => { closeModal(); releaseClock(); } }] });
   };
   $('bReset').onclick = () => {
     if (!G) return;
     if (G.status === 'over') { startGame(); return; }        // the game is over: a new game, nobody loses
     holdClock();
+    if (G.units.length === 1) {   // on your own there is nobody to lose to
+      dialog({ title: 'Start again?', text: 'Your score so far will be lost.', buttons: [{ label: 'Start again', cls: 'danger', fn: () => { closeModal(); startGame(); } }, { label: 'Keep playing', cls: 'quiet', fn: () => { closeModal(); releaseClock(); } }] });
+      return;
+    }
     const hasPin = !!G.cfg.pin, buttons = [];
     G.units.forEach((u, i) => buttons.push({ label: u.name + ' pressed Reset - ' + u.name + ' loses', cls: 'danger', fn: () => { closeModal(); C.giveUp(G, i); renderAll(); showResults(); } }));
     buttons.push({ label: 'The game froze (teacher PIN)' + (hasPin ? '' : ' - set a PIN first'), disabled: !hasPin, fn: () => { closeModal(); askPin('The game froze', 'Teacher: enter the PIN to start this game again. Nobody loses.', () => { startGame(); }); } });
@@ -295,4 +343,5 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden && G && G.status === 'play') keepAwake(true); });
 
   drawSetup();
+  try { if (sessionStorage.getItem('vistrlite.autostart')) { sessionStorage.removeItem('vistrlite.autostart'); startGame(); } } catch (e) { /* ignore */ }
 })();

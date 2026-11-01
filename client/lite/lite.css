@@ -109,3 +109,5 @@ body.classroom .col { padding: 6dvh 0 2dvh; }
 .mbtns { display: grid; gap: 10px; margin-top: 10px; } .mbtns button { padding: 14px; border-radius: 14px; font-weight: 700; font-size: 1.05rem; background: var(--sky); color: var(--ink); } .mbtns button.danger { background: var(--bubblegum); } .mbtns button.quiet { background: transparent; color: var(--cream); border: 2px solid var(--line); } .mbtns button:disabled { opacity: .4; }
 .shake { animation: shake .3s; } @keyframes shake { 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
 .drum.focus .face { outline: 3px dashed rgba(255, 247, 236, .55); outline-offset: 3px; }
+.blk .prog { font-size: .55em; opacity: .75; font-weight: 700; }
+#adSlot2 { min-height: 90px; margin-top: 16px; }
