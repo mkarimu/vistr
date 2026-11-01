@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#171b58">
+  <title>Vistr Lite</title>
+  <link rel="manifest" href="/lite/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="/lite/lite.css">
+</head>
+<body>
+<main id="setup" class="screen setup">
+  <div class="card">
+    <h1>Vistr <span>Lite</span></h1>
+    <p class="sub">A pass-and-play word game for one screen. Change one letter, make a real word.</p>
+    <div class="row sw-row">
+      <div><b>Classroom mode</b><small>Fills the screen with big scrollers and buttons. Best on a touch-screen TV.</small></div>
+      <button id="swClass" class="sw" role="switch" aria-checked="false" aria-label="Classroom mode"><i></i></button>
+    </div>
+    <div class="row"><label>Play as</label><div id="segMode" class="seg"></div></div>
+    <div class="row"><label id="lblCount">How many</label><div id="segCount" class="seg"></div></div>
+    <div id="names" class="names"></div>
+    <div class="row"><label>Word length</label><div id="segLen" class="seg"></div></div>
+    <div class="row"><label>Level</label><div id="segLevel" class="seg"></div></div>
+    <div class="row"><label for="selLang">Language</label><select id="selLang"></select></div>
+    <div class="row"><label>Seconds per turn</label><div id="segSecs" class="seg"></div></div>
+    <div class="row"><label>Turns each</label><div id="segTurns" class="seg"></div></div>
+    <div class="row"><label for="inPin">Teacher PIN <small>(optional, 4 to 6 digits)</small></label><input id="inPin" type="password" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="needed to reset or leave a game"></div>
+    <p id="roundInfo" class="info"></p>
+    <button id="bStart" class="start">Start game</button>
+    <p id="setupMsg" class="msg" role="status"></p>
+    <p class="fine">Players take turns. A team move can change two letters (one for each teammate); a player changes one. Pressing Reset before the game ends means that side loses, unless the teacher confirms with the PIN.</p>
+    <div id="adSlot" class="adslot" hidden></div>
+  </div>
+</main>
+
+<main id="play" class="screen play" hidden>
+  <header class="rib">
+    <button id="bPause" class="rb pause" aria-label="Pause">&#10074;&#10074;<span> Pause</span></button>
+    <button id="bReturn" class="rb ret" aria-label="Return">&#8592;<span> Return</span></button>
+    <div id="ribA" class="ribslot"></div>
+    <div class="mid"><div id="clock" class="clock">0:30</div><button id="bReset" class="rb rst" aria-label="Reset">&#8635;<span> Reset</span></button></div>
+    <div id="ribB" class="ribslot"></div>
+    <div class="tbar"><i id="tbarFill"></i></div>
+  </header>
+  <section id="board" class="board">
+    <div id="colL" class="col l"></div>
+    <div id="drums" class="drums" role="group" aria-label="Letter scrollers"></div>
+    <div id="colR" class="col r"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="overlay" class="overlay" hidden><div><h2>Paused</h2><button id="bResume" class="start">Resume</button></div></div>
+  </section>
+  <div class="bottom"><button id="bProcess" class="process" disabled>Process</button></div>
+  <ol id="chain" class="chain" aria-label="Words played"></ol>
+</main>
+
+<main id="results" class="screen setup" hidden>
+  <div class="card">
+    <h1 id="resTitle">Game over</h1>
+    <p id="resNote" class="sub"></p>
+    <ol id="resList" class="reslist"></ol>
+    <div class="btnrow"><button id="bAgain" class="start">Play again</button><button id="bSettings" class="start alt">Settings</button></div>
+    <div id="adSlot2" class="adslot" hidden></div>
+  </div>
+</main>
+
+<div id="modal" class="modal" hidden><div class="dlg" role="dialog" aria-modal="true"><h2 id="mTitle"></h2><p id="mText"></p><input id="mPin" type="password" inputmode="numeric" autocomplete="off" maxlength="6" hidden><p id="mErr" class="msg"></p><div id="mBtns" class="mbtns"></div></div></div>
+
+<script src="/lite/config.js"></script>
+<script src="/engine.js"></script>
+<script src="/lite/core.js"></script>
+<script src="/lite/lite.js"></script>
+</body>
+</html>
