@@ -34,10 +34,12 @@ const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'serve
   const ctl = new AbortController();
   fetch(B + '/api/events?token=' + c.token, { signal: ctl.signal }).then(async r => { const rd = r.body.getReader(), d = new TextDecoder(); for (;;) { const { value, done } = await rd.read(); if (done) break; got += d.decode(value); } }).catch(() => {});
   await new Promise(r => setTimeout(r, 600));
-  await j('POST', '/api/auth/id', { code: other.player.code, email: 'bob@example.com' });
+  const [, c3] = await j('POST', '/api/auth/id', { code: other.player.code, email: 'bob@example.com' });
   await new Promise(r => setTimeout(r, 600));
   ok(got.includes('signed-out-elsewhere'), 'old phone stream gets signed-out-elsewhere');
   ctl.abort();
+  const [cs, ch] = await j('GET', '/api/champions', null, c3.token);
+  ok(cs === 200 && ch.minGames === 6 && ch.awards.join() === '1000,700,500' && Array.isArray(ch.top) && ch.me.toGoToday === 6, 'the champions route answers (6 games to count today)');
   console.log(n + ' device checks, ' + bad + ' failed');
   srv.kill(); process.exit(bad ? 1 : 0);
 })().catch(e => { console.log('ERR', e.message); srv.kill(); process.exit(1); });

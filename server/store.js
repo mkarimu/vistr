@@ -316,6 +316,12 @@ function recordGame({ level, intensity, lang, mode, players, rated = true, fullR
     c.days = c.days || {}; c.days[dk] = (c.days[dk] || 0) + 1;
     const dks = Object.keys(c.days).sort();
     for (const d of dks.slice(0, Math.max(0, dks.length - 400))) delete c.days[d];
+    if (rated) {   // games and points per day in the Weekly Champions time zone (counted days need 6 games)
+      const wk = require('./weekly').dayKey(Date.now());
+      c.daily = c.daily || {}; const dd = (c.daily[wk] = c.daily[wk] || { g: 0, p: 0, t: 0 });
+      dd.g++; dd.p += Math.max(0, x.score); dd.t = Date.now();
+      const ks = Object.keys(c.daily).sort(); for (const k of ks.slice(0, Math.max(0, ks.length - 120))) delete c.daily[k];
+    }
     let delta = 0;
     if (rated) {
       const k = (c.rated < 20 ? 40 : 24) * (mode === 'duo' ? 1 : 0.5);
@@ -437,7 +443,23 @@ function deletePlayer(id) {
   return p.code;
 }
 
+// ── Weekly Champions: players with their daily games and points, credits, saved stats ──
+function weeklyRows() {
+  const out = [];
+  for (const p of Object.values(db.players)) {
+    if (p.paused || /@bots\.memoryq\.com$/i.test(p.email || '')) continue;   // bots and paused players never win
+    const c = careerOf(p.id); if (c && c.daily) out.push({ id: p.id, code: p.code, name: p.name || '', daily: c.daily });
+  }
+  return out;
+}
+function getStats() { db.stats = db.stats || {}; return db.stats; }
+function saveStats() { save('stats'); }
+function addCredits(id, n) { const p = db.players[id]; if (!p) return 0; p.credits = (p.credits || 0) + n; save('players'); return p.credits; }
+function getCredits(id) { return (db.players[id] || {}).credits || 0; }
+function creditList() { return Object.values(db.players).filter(p => p.credits).map(p => ({ code: p.code, name: p.name || '', email: p.email, credits: p.credits })).sort((a, b) => b.credits - a.credits); }
+
 module.exports = {
+  weeklyRows, getStats, saveStats, addCredits, getCredits, creditList,
   recordGame, recordView, ratingBoard, allPlayers, deletePlayer, RANKS,
   startVisit, touchVisit, endVisit, visitGame, activityList, setName, noteSignIn,
   countGames, gameStats, playReport,

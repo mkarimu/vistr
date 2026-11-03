@@ -337,6 +337,7 @@
       if (S.screen === 'home') renderPlayers();
     });
     window.VistrChat?.attach(es, { api, toast, t });   // player chat (client/chat.js)
+    on('champion', d => toast(t('Weekly Champions: you finished #{r} last week! +{c} credits', { r: d.rank, c: d.credits })));
     on('signed-out-elsewhere', () => sessionEnded('other-device'));
     on('request', showRequest);
     on('request-ended', onRequestEnded);
@@ -737,6 +738,7 @@
     pick(S.level);
     pickIntensity(S.intensity);
     Plays.show();
+    Weekly.show();
 
     const live = S.mode === 'live';
     const goOffline = () => { goStandalone(); toast(t("You're offline. Solo games only.")); };
@@ -832,6 +834,46 @@
 
   // ── The player's record: points, total, rating. Kept as long as the ID exists. ──
   const num = n => Number(n || 0).toLocaleString(S.lang);
+  // ───────────────────────── Weekly Champions ─────────────────────────
+  // Monday to Sunday midnight. A day counts after 6 games; the week's total is the points of the counted days.
+  // The top three get 1000, 700 and 500 credits when the week closes.
+  const Weekly = {
+    async show() {
+      const box = $('[data-weekly]');
+      if (!box || S.mode !== 'live' || !S.token) return;
+      try { this.render(box, await api('GET', '/api/champions')); } catch (_) { /* the card stays hidden */ }
+    },
+    render(box, d) {
+      const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+      box.replaceChildren();
+      const head = el('div', 'weekly-head');
+      head.append(el('b', '', t('Weekly Champions')), el('span', '', t('Ends Sunday midnight')));
+      box.append(head);
+      const prizes = el('p', 'weekly-prizes', t('Top 3 win {a}, {b} and {c} credits. A day counts after {n} games.', { a: d.awards[0], b: d.awards[1], c: d.awards[2], n: d.minGames }));
+      box.append(prizes);
+      const list = el('ol', 'weekly-top');
+      d.top.slice(0, 3).forEach(x => {
+        const li = el('li', x.me ? 'me' : '');
+        li.append(el('span', 'rk', String(x.rank)), el('span', 'who', t('Player {p}', { p: x.code }) + (x.name ? ' - ' + x.name : '')), el('span', 'pts', t('{n} pts', { n: x.total })));
+        list.append(li);
+      });
+      if (!d.top.length) list.append(el('li', 'empty', t('Nobody has reached {n} games in a day yet. Be the first!', { n: d.minGames })));
+      box.append(list);
+      const mine = el('div', 'weekly-me');
+      const dots = el('div', 'weekly-days');
+      const names = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+      d.me.days.forEach((x, i) => { const dot = el('span', 'day' + (x.counted ? ' on' : '') + (x.day === d.week.today ? ' today' : ''), names[i]); dot.title = x.day + ': ' + x.games + ' ' + t('games'); dots.append(dot); });
+      mine.append(dots);
+      const line = d.me.rank ? t('You are #{r} with {n} pts.', { r: d.me.rank, n: d.me.total }) : t('You are not ranked yet.');
+      const today = d.me.toGoToday ? t('{n} more games today to count this day.', { n: d.me.toGoToday }) : t("Today counts! Keep going - points on counted days add up.");
+      mine.append(el('p', '', line + ' ' + today));
+      box.append(mine);
+      if (d.last && d.last.winners.length) box.append(el('p', 'weekly-last', t('Last week: ') + d.last.winners.map(w => '#' + w.rank + ' ' + t('Player {p}', { p: w.code }) + (w.name ? ' (' + w.name + ')' : '')).join(', ')));
+      if (d.me.credits) box.append(el('p', 'weekly-credits', t('Your credits: {n}', { n: d.me.credits })));
+      box.hidden = false;
+    },
+  };
+
   const Record = {
     async show() {
       if (S.record) this.render(S.record);
