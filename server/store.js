@@ -118,6 +118,13 @@ function createSession(playerId, ttlMs) {
   save('sessions');
   return token;
 }
+// One device at a time: a new sign-in ends every other sign-in of the same player. Returns the tokens it ended.
+function revokeOtherSessions(playerId, keepToken) {
+  const gone = [];
+  for (const [tok, s] of Object.entries(db.sessions)) if (s.playerId === playerId && tok !== keepToken) { delete db.sessions[tok]; gone.push(tok); }
+  if (gone.length) save('sessions');
+  return gone;
+}
 function playerForToken(token) {
   const s = token && db.sessions[token];
   if (s && s.expires && s.expires < Date.now()) { delete db.sessions[token]; save('sessions'); return null; }
@@ -438,6 +445,6 @@ module.exports = {
   ready, flushRemote, remote: !!REMOTE,
   countAd, adStats, isAvailable, setAvailable,
   findPlayerByEmail, findPlayerByCode, getPlayer, createPlayer,
-  createSession, playerForToken, deleteSession, addResult, topTen, levelBoard,
+  createSession, revokeOtherSessions, playerForToken, deleteSession, addResult, topTen, levelBoard,
   findPlayerByMq, linkMq, createAdminSession, adminSessionOk, setCode, setPaused,
 };

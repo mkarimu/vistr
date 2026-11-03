@@ -486,6 +486,25 @@ function serveAdImage(res, url) {
   });
 }
 
+// ───────────────────────── one device per player ─────────────────────────
+// A Player ID is on one device at a time. Signing in again (any way) ends the sign-in on the other device,
+// which is told why. Signing in with an ID needs the email that goes with it; the ID alone is not enough.
+const revoked = new Map();   // token -> when: lets a signed-out device be told "you signed in elsewhere" instead of a plain 401
+function tokenOf(req, url) { const h = req.headers.authorization || ''; return h.startsWith('Bearer ') ? h.slice(7) : url.searchParams.get('token'); }
+function startSession(player, ttlMs) {
+  const token = store.createSession(player.id, ttlMs);
+  for (const old of store.revokeOtherSessions(player.id, token)) revoked.set(old, Date.now());
+  if (revoked.size > 2000) for (const [k, t] of revoked) if (Date.now() - t > 7 * 24 * 3600_000) revoked.delete(k);
+  const set = streams.get(player.id);
+  if (set) for (const res of [...set]) {
+    if (res._tok === token) continue;
+    try { res.write('event: signed-out-elsewhere\ndata: {}\n\n'); res.end(); } catch (_) {}
+    set.delete(res);
+  }
+  return token;
+}
+const realEmail = e => !!e && !/@(users|bots)\.memoryq\.com$/i.test(e);
+
 const chat = chatMod.create({ push, store, send });   // player-to-player chat, opened when an invite is accepted
 const routes = {
   ...chat.routes,
@@ -598,7 +617,7 @@ const routes = {
     if (!player.name) store.setName(player.id, mq.username);
     store.noteSignIn(player.id, clientIp(req));
     console.log(`[auth] Memoryq ${mq.username} is player ${player.code}${isNew ? ' (new)' : ''}`);
-    send(res, 200, { token: store.createSession(player.id, days * DAY_MS), player: { code: player.code, email: player.email }, isNew, memoryq: mq.username, remember: mq.remember !== false, days });
+    send(res, 200, { token: startSession(player, days * DAY_MS), player: { code: player.code, email: player.email }, isNew, memoryq: mq.username, remember: mq.remember !== false, days });
   },
   'POST /api/auth/register': async (req, res, { body }) => {
     const email = String(body.email || '').trim().toLowerCase();
@@ -614,7 +633,7 @@ const routes = {
     if (isNew) { player = store.createPlayer(email); emailPlayerId(email, player.code); }
     if (body.name && (isNew || !player.name)) store.setName(player.id, body.name);
     store.noteSignIn(player.id, clientIp(req));
-    send(res, 200, { token: store.createSession(player.id, ttlOf(body.remember)), player: { code: player.code, email: player.email, mq: player.mq || '' }, isNew });
+    send(res, 200, { token: startSession(player, ttlOf(body.remember)), player: { code: player.code, email: player.email, mq: player.mq || '' }, isNew });
   },
   'POST /api/auth/id': async (req, res, { body }) => {
     const ip = clientIp(req);   // behind Caddy/nginx, the real address (not the proxy's)
@@ -622,9 +641,14 @@ const routes = {
     const code = String(body.code || '').replace(/\D/g, '');
     const player = code && store.findPlayerByCode(code);
     if (!player) { noteIdFailure(ip); return send(res, 404, { error: `There is no player ${code || 'with that ID'}. New here? Use your email to get an ID.` }); }
+    // The ID alone is not a password: it must come with the email address it was made for (or Memoryq sign-in).
+    const email = String(body.email || '').trim().toLowerCase();
+    if (!realEmail(player.email)) return send(res, 403, { error: 'This Player ID belongs to a Memoryq account. Tap "Sign in with Memoryq".', memoryq: true });
+    if (!email) return send(res, 400, { error: 'Type the email address that goes with this Player ID.', needEmail: true });
+    if (email !== String(player.email).toLowerCase()) { noteIdFailure(ip); return send(res, 403, { error: 'That Player ID and email address do not go together.' }); }
     if (player.paused) return send(res, 403, { error: PAUSED });
     store.noteSignIn(player.id, clientIp(req));
-    send(res, 200, { token: store.createSession(player.id, ttlOf(body.remember)), player: { code: player.code, email: player.email, mq: player.mq || '' } });
+    send(res, 200, { token: startSession(player, ttlOf(body.remember)), player: { code: player.code, email: player.email, mq: player.mq || '' } });
   },
   'POST /api/auth/signout': async (req, res, { me }) => {
     store.deleteSession((req.headers.authorization || '').slice(7));
@@ -753,6 +777,7 @@ const routes = {
     // of a stream until enough bytes arrive, which made requests show up late.
     res.write(`:${' '.repeat(2048)}\nretry: 2000\n\n`);
     if (!streams.has(me.id)) streams.set(me.id, new Set());
+    res._tok = tokenOf(req, url);
     streams.get(me.id).add(res);
     visitOpen(me.id, clientIp(req), url.searchParams.get('app') === 'android' ? 'Android app' : 'Browser');
     clearTimeout(dropTimers.get(me.id)); dropTimers.delete(me.id);
@@ -908,7 +933,7 @@ const server = http.createServer(async (req, res) => {
   if (!handler) return send(res, 404, { error: 'Unknown API route.' });
   try {
     const me = auth(req, url);   // public routes still see who is signed in, if anyone
-    if (!PUBLIC.has(key) && !me) return send(res, 401, { error: 'Sign in again.' });
+    if (!PUBLIC.has(key) && !me) return send(res, 401, revoked.has(tokenOf(req, url)) ? { error: 'You signed in on another device, so this one was signed out.', code: 'other-device' } : { error: 'Sign in again.' });
     const body = req.method === 'POST' ? await readBody(req) : {};
     await handler(req, res, { me, body, url });
   } catch (e) {

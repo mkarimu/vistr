@@ -50,8 +50,11 @@ const post = (p, body, token) => fetch(BASE + p, { method: 'POST', headers: { 'C
     r = await post('/api/auth/register', { email: 'phone.player@example.com' });
     ok('a player who has an ID still signs in with their email', r.status === 200 && r.body.player.code === code && !r.body.isNew);
     r = await post('/api/auth/id', { code });
-    ok('... or with their Player ID', r.status === 200 && r.body.player.mq === '');
-    r = await fetch(BASE + '/api/me', { headers: { Authorization: 'Bearer ' + token } }).then(x => x.json());
+    ok('a Player ID alone does not sign in: it needs the email too', r.status === 400 && r.body.needEmail === true);
+    r = await post('/api/auth/id', { code, email: 'phone.player@example.com' });
+    ok('... but the ID with its email does', r.status === 200 && r.body.player.mq === '');
+    const token2 = r.body.token;   // signing in again ended the first sign-in (one device at a time)
+    r = await fetch(BASE + '/api/me', { headers: { Authorization: 'Bearer ' + token2 } }).then(x => x.json());
     ok('the game knows the ID is not linked yet (it invites to link)', r.player.mq === '');
     console.log('-- Game IDs given from memoryq.com --');
     r = await post('/api/admin/player/assign?key=wrong', { mq: 'neema', email: 'neema@example.com' });
@@ -82,10 +85,10 @@ const post = (p, body, token) => fetch(BASE + p, { method: 'POST', headers: { 'C
     console.log('-- Paused and deleted from memoryq.com --');
     r = await post('/api/admin/player/pause?key=test', { code: '79', paused: 1 });
     ok('a player can be paused', r.status === 200 && r.body.player.paused === true);
-    r = await post('/api/auth/id', { code: '79' });
+    r = await post('/api/auth/id', { code: '79', email: 'neema@example.com' });
     ok('a paused player cannot sign in', r.status === 403 && /paused/.test(r.body.error));
     r = await post('/api/admin/player/pause?key=test', { code: '79', paused: 0 });
-    ok('... and can again when let back', r.status === 200 && (await post('/api/auth/id', { code: '79' })).status === 200);
+    ok('... and can again when let back', r.status === 200 && (await post('/api/auth/id', { code: '79', email: 'neema@example.com' })).status === 200);
     r = await post('/api/admin/player/delete?key=wrong', { code: code });
     ok('deleting needs the admin key', r.status === 403);
     r = await post('/api/admin/player/delete?key=test', { code: code });

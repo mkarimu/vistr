@@ -98,7 +98,7 @@
       body: body ? JSON.stringify(body) : undefined,
     });
     const data = await r.json().catch(() => ({}));
-    if (r.status === 401 && S.token) { sessionEnded(); throw new Error(t('Your session ended. Sign in again.')); }
+    if (r.status === 401 && S.token) { sessionEnded(data.code === 'other-device' ? 'other-device' : ''); throw new Error(data.code === 'other-device' ? t('You signed in on another device, so this one was signed out.') : t('Your session ended. Sign in again.')); }
     if (!r.ok && !('outcome' in data)) {
       const err = new Error(data.error ? tr(data.error) : t('The server answered {n}.', { n: r.status }));
       err.status = r.status; throw err;
@@ -271,10 +271,10 @@
   // The app remembers this device's Player ID. Use it to go online without asking
   // for anything; the email page appears only when the ID isn't known (any more).
   async function signInWithKnownId() {
-    const id = saved('vistr.lastId');
-    if (!id || saved('vistr.signedOut')) return false;   // after Sign out, wait for the player to sign in
+    const id = saved('vistr.lastId'), em = saved('vistr.lastEmail');
+    if (!id || !em || saved('vistr.signedOut')) return false;   // after Sign out, wait for the player to sign in; an ID alone is not enough
     try {
-      const r = await api('POST', '/api/auth/id', { code: id });
+      const r = await api('POST', '/api/auth/id', { code: id, email: em });
       signedIn(r);
       return true;
     } catch (e) {
@@ -337,6 +337,7 @@
       if (S.screen === 'home') renderPlayers();
     });
     window.VistrChat?.attach(es, { api, toast, t });   // player chat (client/chat.js)
+    on('signed-out-elsewhere', () => sessionEnded('other-device'));
     on('request', showRequest);
     on('request-ended', onRequestEnded);
     on('match', m => { S.match = m; if (m.status === 'pending') showReady(); else if (S.screen === 'game') { renderOpponent(); onBoard(m); } });
@@ -596,6 +597,7 @@
     try { sessionStorage.removeItem('vistr.token'); if (!remember) sessionStorage.setItem('vistr.token', r.token); } catch (_) {}
     saved('vistr.token', remember ? r.token : null);
     S.player = r.player; saved('vistr.lastId', remember ? r.player.code : null); saved('vistr.signedOut', null);
+    if (remember && r.player.email && !/@(users|bots)\.memoryq\.com$/i.test(r.player.email)) saved('vistr.lastEmail', r.player.email);   // this device may sign in with ID + email again
     S.mode = 'live'; saved('vistr.mode', 'live');
     S.record = null;
     becomeAvailable();
@@ -607,9 +609,9 @@
     const fi = $('[data-form=id]'), fe = $('[data-form=email]');
     const last = saved('vistr.lastId');
     if (last) {   // the ID stays on this device after Sign out: offer it first
-      fi.code.value = last; $('[data-has-id]').open = true;
+      fi.code.value = last; $('[data-has-id]').open = true; fi.email.value = saved('vistr.lastEmail') || '';
       $('.signin-title').textContent = t('Welcome back, Player {p}', { p: last });
-      $('.signin-title + .lead').textContent = t('Tap Go online with my ID. Your points and rating are waiting.');
+      const lead = $('.signin-title + .lead'); if (lead) lead.textContent = t('Type the email for this ID to go online. Your points and rating are waiting.');
       $('[data-has-email]').before($('[data-has-id]'));
     }
     const rem = () => $('[data-remember]')?.checked !== false;
@@ -680,7 +682,7 @@
     };
     fi.onsubmit = e => {
       e.preventDefault();
-      guard(async () => { signedIn(await api('POST', '/api/auth/id', { code: fi.code.value.trim(), remember: rem() ? 1 : 0 }), rem()); showHome(); toast(t("You're online as Player {p}.", { p: S.player.code })); });
+      guard(async () => { signedIn(await api('POST', '/api/auth/id', { code: fi.code.value.trim(), email: fi.email.value.trim(), remember: rem() ? 1 : 0 }), rem()); showHome(); toast(t("You're online as Player {p}.", { p: S.player.code })); });
     };
     fe.onsubmit = e => {
       e.preventDefault();
@@ -1457,14 +1459,18 @@
   }
   function forgetPlayer() { // the player deleted their ID: nothing about it stays on this device
     S.token = null; S.player = null; S.record = null; window.VistrChat?.reset();
-    ['vistr.token', 'vistr.lastId', 'vistr.signedOut'].forEach(k => saved(k, null));
+    ['vistr.token', 'vistr.lastId', 'vistr.lastEmail', 'vistr.signedOut'].forEach(k => saved(k, null));
     try { sessionStorage.removeItem('vistr.token'); } catch (_) {}
     goStandalone();
   }
-  async function sessionEnded() { // the server no longer knows this sign-in: try the ID, else ask
+  async function sessionEnded(why) { // the server no longer knows this sign-in: try the ID, else ask
     S.token = null; S.player = null; saved('vistr.token', null);
     try { sessionStorage.removeItem('vistr.token'); } catch (_) {}
     S.events?.close(); S.events = null;
+    if (why === 'other-device') {   // the player signed in on another phone: do not sign back in on this one by itself
+      S.mode = 'standalone'; saved('vistr.mode', 'standalone');
+      showSignIn(); toast(t('You signed in on another device, so this one was signed out.')); return;
+    }
     if (await signInWithKnownId()) { showHome(); toast(t("You're online as Player {p}.", { p: S.player.code })); }
     else showSignIn();
   }
