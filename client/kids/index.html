@@ -120,6 +120,7 @@ h1 span{color:var(--y)}
   function msg(t,k){var m=$('msg');m.textContent=t;m.className='msg '+(k||'')}
   function drawTrail(){var t=$('trail');t.innerHTML='';trail.forEach(function(w,i){var s=document.createElement('span');s.textContent=w;if(i===trail.length-1)s.className='last';t.appendChild(s)})}
   function newGame(){if(!pairs.length)mkPairs();pick();drawPairs();startTimer();trail=[start];over=false;$('start').textContent=start;$('target').textContent=target;setCur(start);drawTrail();drawMade();msg('','');$('win').classList.remove('on')}
+  function back(last){setTimeout(function(){if(!over)setCur(last)},650)}
   function bad(t){msg(t,'bad');var d=$('drums');d.classList.remove('shake');void d.offsetWidth;d.classList.add('shake')}
   function check(){
     if(over)return;
@@ -127,8 +128,8 @@ h1 span{color:var(--y)}
     for(i=0;i<3;i++)if(w[i]!==last[i])diff++;
     if(diff===0)return bad('Change one letter first.');
     if(diff>1)return bad('Just one letter at a time..');
-    if(!set[w])return bad('Hmm, I do not know "'+w+'". Try another letter.');
-    if(trail.indexOf(w)>=0)return bad('You already used that word.');
+    if(!set[w]){bad('Hmm, "'+w+'" is not a word I know. Going back to '+last+'.');return back(last)}
+    if(trail.indexOf(w)>=0){bad('You already used that word. Going back to '+last+'.');return back(last)}
     trail.push(w);drawTrail();drawMade();msg('Yes! '+w+' is a word.','good');
     if(w===target){over=true;pairs[idx].done=true;clearInterval(tick);drawPairs();drawMade();bubbles();stars++;try{localStorage.setItem('vistr.kids.stars',stars)}catch(e){}showStars();$('wintxt').textContent='You did it! You turned '+start+' into '+target+'!';setTimeout(function(){$('win').classList.add('on')},500)}
   }
