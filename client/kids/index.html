@@ -145,8 +145,8 @@ h1 span{color:var(--y)}
     var r=window.prompt('Grown-ups only. What is '+a+' + '+b+'?');
     if(r!==null&&+r===a+b){location.href='../'}
   };
-  fetch('words.txt').then(function(r){return r.text()}).then(function(t){
-    words=t.split(/\s+/).filter(Boolean);words.forEach(function(w){set[w]=1});showStars();newGame();
+  Promise.all([fetch('words.txt').then(function(r){return r.text()}),fetch('common.txt').then(function(r){return r.text()})]).then(function(a){
+    a[0].split(/\s+/).filter(Boolean).forEach(function(w){set[w]=1});words=a[1].split(/\s+/).filter(Boolean);showStars();newGame();
   }).catch(function(){$('hello').textContent='Could not load words. Check your connection and reload.'});
 })();
 </script></body></html>
