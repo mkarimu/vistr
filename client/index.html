@@ -157,6 +157,8 @@
         <div class="live-area" data-live-only>
           <!-- Weekly Champions: Monday to Sunday midnight; a day counts after 6 games -->
           <section class="weekly" data-weekly hidden aria-label="Weekly Champions"></section>
+          <!-- Daily Challenge: turn the start word into the target word -->
+          <section class="daily" data-daily hidden aria-label="Daily Challenge"></section>
           <!-- Player record: kept for as long as the Player ID exists -->
           <section class="record" data-record hidden aria-label="Your record">
             <div class="record-head">
@@ -223,6 +225,23 @@
     </section>
   </template>
 
+
+  <template id="t-daily">
+    <section class="screen narrow daily-screen">
+      <header class="bar">
+        <button class="link" type="button" data-action="daily-back">Back</button>
+        <span class="daily-clock" data-d-clock>0:00</span>
+        <span data-d-steps></span>
+      </header>
+      <h1 class="headline" data-d-title></h1>
+      <div class="daily-tiles" data-d-tiles></div>
+      <p class="hint" data-d-hint>Tap a letter, then pick its new letter. Every step must be a real word.</p>
+      <div class="daily-pick" data-d-pick hidden></div>
+      <p class="daily-way" data-d-way></p>
+      <div class="daily-end" data-d-end hidden></div>
+      <button class="link center" type="button" data-action="daily-quit">Give up this attempt</button>
+    </section>
+  </template>
 
   <template id="t-ready">
     <section class="screen narrow">

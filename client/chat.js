@@ -1,7 +1,7 @@
 /* Vistr chat: opens when an invite is accepted, stays until both players end it, and the server keeps the history. */
 (function () {
   'use strict';
-  var H = null, chats = {}, cur = '', box = null, fab = null, listEl = null, msgsEl = null, headEl = null, form = null, endBtn = null, openPanel = false;
+  var H = null, chats = {}, cur = '', box = null, fab = null, listEl = null, msgsEl = null, headEl = null, form = null, endBtn = null, openPanel = false, inGameSeen = false;
   function T(s, v) { return H && H.t ? H.t(s, v) : s; }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function label(c) { var s = chats[c]; return s && s.state.name ? s.state.name + ' (' + c + ')' : T('Player {p}', { p: c }); }
@@ -37,10 +37,24 @@
   }
   function markRead(c) { var s = chats[c]; if (s && openPanel && cur === c && s.state.unread) { s.state.unread = 0; post('/api/chat/read', { with: c }).catch(function () {}); render(); } }
 
+  // On the game screen the panel docks right under the Process button and squeezes the panes below it.
+  function place() {
+    if (!box) return;
+    var g = document.querySelector('.screen.game'), any = Object.keys(chats).length > 0, docked = !!g && openPanel && any;
+    document.body.classList.toggle('chat-ingame', !!g);
+    if (g) g.classList.toggle('chat-on', docked);
+    box.classList.toggle('docked', docked);
+    if (docked) { var a = g.querySelector('.actions'); if (a && a.nextSibling !== box) a.parentNode.insertBefore(box, a.nextSibling); }
+    else if (box.parentNode !== document.body) document.body.appendChild(box);
+    return !!g;
+  }
+  setInterval(function () { if (box && place() !== inGameSeen) { inGameSeen = !inGameSeen; render(); } }, 400);
+
   function render() {
     if (!box) return;
-    var any = Object.keys(chats).length > 0, u = totalUnread();
-    fab.hidden = !any; fab.textContent = T('Chat') + (u ? ' (' + u + ')' : ''); fab.classList.toggle('has', u > 0);
+    var any = Object.keys(chats).length > 0, u = totalUnread(), g = place();
+    inGameSeen = !!g;
+    fab.hidden = !any; fab.textContent = g ? '\uD83D\uDCAC' + (u ? ' ' + u : '') : T('Chat') + (u ? ' (' + u + ')' : ''); fab.classList.toggle('has', u > 0); fab.classList.toggle('side', !!g);
     box.hidden = !openPanel || !any;
     if (box.hidden) return;
     var inThread = !!(cur && chats[cur]);
@@ -71,7 +85,7 @@
     if (!prev) prev = chats[c] = { state: st, msgs: [], loaded: false };
     prev.state = st;
     if (st.open && !wasOpen) {   // just opened: bring the chat up so players can talk before the game
-      cur = c; prev.loaded = false; prev.shown = false; openPanel = !document.body.classList.contains('in-game'); load(c);
+      cur = c; prev.loaded = false; prev.shown = false; openPanel = !document.querySelector('.screen.game'); load(c);
       H.toast(T('Chat with {p} is open', { p: label(c) }));
     }
     render(); markRead(c);

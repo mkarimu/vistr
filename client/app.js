@@ -739,6 +739,7 @@
     pickIntensity(S.intensity);
     Plays.show();
     Weekly.show();
+    Daily.show();
 
     const live = S.mode === 'live';
     const goOffline = () => { goStandalone(); toast(t("You're offline. Solo games only.")); };
@@ -871,6 +872,108 @@
       if (d.last && d.last.winners.length) box.append(el('p', 'weekly-last', t('Last week: ') + d.last.winners.map(w => '#' + w.rank + ' ' + t('Player {p}', { p: w.code }) + (w.name ? ' (' + w.name + ')' : '')).join(', ')));
       if (d.me.credits) box.append(el('p', 'weekly-credits', t('Your credits: {n}', { n: d.me.credits })));
       box.hidden = false;
+    },
+  };
+
+  // ───────────────────────── Daily Challenge ─────────────────────────
+  // Turn the start word into the target word, one letter at a time, every step a real word. Four lengths a day.
+  // Opens after 6 games that day. The clock is 4:00 (4 letters) to 5:30 (7 letters), 1 minute less per re-attempt.
+  const Daily = {
+    data: null, run: null, timer: null,
+    mmss(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); },
+    async show() {
+      const box = $('[data-daily]');
+      if (!box || S.mode !== 'live' || !S.token) return;
+      try { this.data = await api('GET', '/api/daily'); this.card(box, this.data); } catch (_) { /* the card stays hidden */ }
+    },
+    card(box, d) {
+      const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+      box.replaceChildren();
+      const head = el('div', 'daily-head'); head.append(el('b', '', t('Daily Challenge')), el('span', '', t('Top 3 win {a}, {b}, {c} credits', { a: d.awards[0], b: d.awards[1], c: d.awards[2] })));
+      box.append(head);
+      if (!d.unlocked) {
+        box.append(el('p', 'daily-lock', t('Play {n} more games today to unlock the Daily Challenge.', { n: d.toUnlock })));
+      }
+      d.ties.forEach(x => {
+        if (x.played) return;
+        const b = el('button', 'btn primary', t('Tie-break waiting: {a} to {b} ({h}h left)', { a: x.start.toUpperCase(), b: x.target.toUpperCase(), h: x.hoursLeft })); b.type = 'button';
+        b.onclick = () => guard(() => this.start({ tie: x.day })); box.append(b);
+      });
+      const grid = el('div', 'daily-lens');
+      d.lens.forEach(x => {
+        const b = el('button', 'daily-len' + (x.solved ? ' done' : ''));
+        b.type = 'button'; b.disabled = !d.unlocked;
+        b.append(el('b', '', x.start.toUpperCase() + ' \u2192 ' + x.target.toUpperCase()),
+          el('span', '', t('{n} letters', { n: x.len }) + ' - ' + this.mmss(x.seconds) + (x.best ? ' - ' + t('best: {s} steps', { s: x.best.steps }) : '')));
+        b.onclick = () => guard(() => this.start({ len: x.len })); grid.append(b);
+      });
+      box.append(grid);
+      if (d.board.length) {
+        const ol = el('ol', 'weekly-top');
+        d.board.slice(0, 3).forEach(r => { const li = el('li', r.me ? 'me' : ''); li.append(el('span', 'rk', String(r.rank)), el('span', 'who', t('Player {p}', { p: r.code }) + (r.name ? ' - ' + r.name : '')), el('span', 'pts', t('{n}/4 solved', { n: r.lens }))); ol.append(li); });
+        box.append(ol);
+      }
+      box.hidden = false;
+    },
+    async start(body) {
+      const r = await api('POST', '/api/daily/start', body);
+      this.run = { kind: r.kind, len: r.len, attempt: r.attempt, seconds: r.seconds, target: r.target, steps: r.steps.slice(), current: r.start, startedAt: Date.now(), over: false, sel: -1 };
+      mount('daily', 'daily'); this.bind(); this.draw(); this.tick();
+      clearInterval(this.timer); this.timer = setInterval(() => this.tick(), 500);
+    },
+    bind() {
+      app.onclick = e => {
+        const a = e.target.closest('[data-action]')?.dataset.action;
+        if (a === 'daily-back' || a === 'daily-quit') guard(async () => { if (this.run && !this.run.over) await api('POST', '/api/daily/quit').catch(() => {}); this.leave(); });
+      };
+    },
+    leave() { clearInterval(this.timer); this.run = null; showHome(); },
+    left() { const r = this.run; return Math.max(0, r.seconds - (Date.now() - r.startedAt) / 1000); },
+    tick() {
+      const r = this.run; if (!r || S.screen !== 'daily') { clearInterval(this.timer); return; }
+      if (r.over) return;
+      const left = this.left(); $('[data-d-clock]').textContent = this.mmss(left);
+      $('[data-d-clock]').classList.toggle('low', left <= 30);
+      if (left <= 0 && !r.over) { r.over = true; api('POST', '/api/daily/quit').catch(() => {}); this.end(false, t("Time's up!")); }
+    },
+    draw() {
+      const r = this.run; if (!r) return;
+      $('[data-d-title]').textContent = t('Turn {a} into {b}', { a: r.steps[0].toUpperCase(), b: r.target.toUpperCase() });
+      $('[data-d-steps]').textContent = t('{n} steps', { n: r.steps.length - 1 });
+      const tiles = $('[data-d-tiles]'); tiles.replaceChildren();
+      [...r.current].forEach((c, i) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'tile' + (r.sel === i ? ' sel' : ''); b.textContent = c.toUpperCase(); b.disabled = r.over;
+        b.onclick = () => { r.sel = r.sel === i ? -1 : i; this.draw(); }; tiles.append(b);
+      });
+      const pick = $('[data-d-pick]'); pick.replaceChildren(); pick.hidden = r.sel < 0 || r.over;
+      if (r.sel >= 0) 'abcdefghijklmnopqrstuvwxyz'.split('').forEach(c => {
+        if (c === r.current[r.sel]) return;
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = c.toUpperCase();
+        b.onclick = () => this.move(r.current.slice(0, r.sel) + c + r.current.slice(r.sel + 1)); pick.append(b);
+      });
+      $('[data-d-way]').textContent = r.steps.map(w => w.toUpperCase()).join(' \u2192 ');
+    },
+    async move(word) {
+      const r = this.run; if (!r || r.over || this.busy) return; this.busy = true;
+      try {
+        const d = await api('POST', '/api/daily/move', { word });
+        if (d.over) { r.over = true; r.steps = d.steps; r.current = d.steps[d.steps.length - 1]; this.draw(); this.end(d.solved, d.solved ? t('Solved in {n} steps!', { n: d.count }) : t("Time's up!"), d); }
+        else if (d.ok) { r.steps = d.steps; r.current = word; r.sel = -1; this.draw(); }
+        else { toast(d.reason === 'notword' ? t('That is not a word.') : d.reason === 'repeat' ? t('You already used that word.') : t('Change one letter at a time.')); r.sel = -1; this.draw(); }
+      } catch (e) { toast(e.message); } finally { this.busy = false; }
+    },
+    end(solved, text, d) {
+      const r = this.run, box = $('[data-d-end]'); box.replaceChildren(); box.hidden = false; $('[data-d-pick]').hidden = true;
+      const q = $('[data-action=daily-quit]'); if (q) q.hidden = true;
+      const h = document.createElement('h2'); h.textContent = text; box.append(h);
+      if (solved && d) { const p = document.createElement('p'); p.textContent = t('{n} steps in {s} seconds. The shortest way is {b} steps.', { n: d.count, s: d.secs, b: d.best }); box.append(p); }
+      if (r.kind === 'daily') {
+        const again = document.createElement('button'); again.type = 'button'; again.className = 'btn';
+        again.textContent = t('Try again');
+        api('GET', '/api/daily').then(d => { this.data = d; const x = d.lens.find(y => y.len === r.len); if (x) again.textContent = t('Try again ({m} on the clock)', { m: this.mmss(x.seconds) }); }).catch(() => {});
+        again.onclick = () => guard(() => this.start({ len: r.len })); box.append(again);
+      }
+      const back = document.createElement('button'); back.type = 'button'; back.className = 'btn primary'; back.textContent = t('Back to home'); back.onclick = () => this.leave(); box.append(back);
     },
   };
 

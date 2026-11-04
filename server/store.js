@@ -452,6 +452,7 @@ function weeklyRows() {
   }
   return out;
 }
+function todayGames(id) { const c = careerOf(id); const dd = c && c.daily && c.daily[require('./weekly').dayKey(Date.now())]; return dd ? dd.g : 0; }
 function getStats() { db.stats = db.stats || {}; return db.stats; }
 function saveStats() { save('stats'); }
 function addCredits(id, n) { const p = db.players[id]; if (!p) return 0; p.credits = (p.credits || 0) + n; save('players'); return p.credits; }
@@ -459,7 +460,7 @@ function getCredits(id) { return (db.players[id] || {}).credits || 0; }
 function creditList() { return Object.values(db.players).filter(p => p.credits).map(p => ({ code: p.code, name: p.name || '', email: p.email, credits: p.credits })).sort((a, b) => b.credits - a.credits); }
 
 module.exports = {
-  weeklyRows, getStats, saveStats, addCredits, getCredits, creditList,
+  weeklyRows, todayGames, getStats, saveStats, addCredits, getCredits, creditList,
   recordGame, recordView, ratingBoard, allPlayers, deletePlayer, RANKS,
   startVisit, touchVisit, endVisit, visitGame, activityList, setName, noteSignIn,
   countGames, gameStats, playReport,

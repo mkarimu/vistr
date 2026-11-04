@@ -9,6 +9,7 @@ const store = require('./store');
 const draft = require('./draft');
 const chatMod = require('./chat');
 const weeklyMod = require('./weekly');
+const dailyMod = require('./daily');
 let dict;
 try {
   dict = require('./dictionary');
@@ -507,11 +508,14 @@ function startSession(player, ttlMs) {
 const realEmail = e => !!e && !/@(users|bots)\.memoryq\.com$/i.test(e);
 
 const weekly = weeklyMod.create({ store, push, adminOk, send });   // Weekly Champions: top three each week get credits
+const daily = dailyMod.create({ store, push, adminOk, send });   // Daily Challenge: start word to target word
+store.ready.then(() => { weekly.closeDue(); daily.closeDue(); }); setInterval(() => daily.closeDue(), 10 * 60_000).unref();
 store.ready.then(() => weekly.closeDue()); setInterval(() => weekly.closeDue(), 10 * 60_000).unref();   // pay a finished week once
 const chat = chatMod.create({ push, store, send });   // player-to-player chat, opened when an invite is accepted
 const routes = {
   ...chat.routes,
   ...weekly.routes,
+  ...daily.routes,
   // Games played, for the home screen: { total, today }. Admin key adds the breakdown.
   'GET /api/stats': async (req, res, { url }) => {
     const st = store.gameStats();
