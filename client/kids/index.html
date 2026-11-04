@@ -6,7 +6,32 @@
 :root{--bg:#2b1b5e;--card:#3d2a85;--o:#ff9a3c;--p:#ff6fb5;--s:#4cc9f0;--l:#8be04e;--y:#ffd23f;--ink:#241046}
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100dvh;background:linear-gradient(#2b1b5e,#5b2a86);color:#fff;font:700 18px system-ui,"Comic Sans MS",sans-serif;-webkit-tap-highlight-color:transparent}
-main{max-width:520px;margin:0 auto;padding:14px 16px 28px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:100dvh}
+#wrap{display:grid;grid-template-columns:minmax(0,1fr);max-width:1100px;margin:0 auto}
+aside{display:none;padding:14px 12px}
+aside h2{margin:6px 0 10px;font-size:20px;color:var(--y)}
+.plist{display:flex;flex-direction:column;gap:8px}
+.plist button{border:0;border-radius:14px;padding:10px 12px;font:inherit;font-size:17px;text-transform:uppercase;letter-spacing:.08em;background:var(--card);color:#fff;cursor:pointer;text-align:left}
+.plist button.on{background:var(--y);color:var(--ink)}
+.plist button.done::after{content:' \2713';color:var(--l)}
+.plist button.on.done::after{color:var(--ink)}
+.made{display:flex;flex-direction:column;gap:8px}
+.made span{padding:8px 14px;border-radius:14px;background:var(--card);text-transform:uppercase;letter-spacing:.1em;font-size:20px}
+.made span.help{background:transparent;border:2px dashed #cbb8ff;color:#cbb8ff}
+.made span.fin{background:var(--l);color:var(--ink)}
+.count{margin:0 0 8px;font-size:15px;opacity:.85}
+.timer{font-size:22px;background:var(--card);border-radius:999px;padding:4px 16px}
+.timer.low{background:#a33;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.6}}
+.mobile-list{display:flex;gap:8px;overflow-x:auto;width:100%;padding-bottom:4px}
+.mobile-list button{flex:none;border:0;border-radius:999px;padding:6px 14px;font:inherit;font-size:15px;text-transform:uppercase;background:var(--card);color:#fff}
+.mobile-list button.on{background:var(--y);color:var(--ink)}
+.mobile-list button.done::after{content:' \2713'}
+@media(min-width:900px){#wrap{grid-template-columns:260px minmax(0,520px) 260px;justify-content:center}aside{display:block}.mobile-list,.mobile-made{display:none!important}}
+.bub{position:absolute;bottom:-80px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#fff9,var(--c));opacity:.9;animation:rise linear forwards}
+@keyframes rise{to{transform:translateY(-120vh) translateX(var(--dx));opacity:.2}}
+.win{overflow:hidden}
+.win>*{position:relative;z-index:1}
+main{width:100%;min-width:0;max-width:520px;margin:0 auto;padding:14px 16px 28px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:100dvh}
 h1{margin:4px 0 0;font-size:32px;letter-spacing:.02em}
 h1 span{color:var(--y)}
 .hello{margin:0;font-size:20px;text-align:center;opacity:.95}
@@ -36,11 +61,15 @@ h1 span{color:var(--y)}
 .exit{margin-top:auto;background:none;border:0;color:#cbb8ff;font:inherit;font-size:14px;text-decoration:underline;cursor:pointer;padding:10px}
 @media(prefers-reduced-motion:reduce){.shake{animation:none}}
 </style></head><body>
+<div id="wrap">
+<aside><h2>Word pairs</h2><div class="plist" id="plist"></div></aside>
 <main>
   <h1>Vistr <span>Kids</span></h1>
   <p class="hello" id="hello">Change one letter at a time to turn the first word into the green word.</p>
+  <div class="mobile-list" id="mlist"></div>
+  <div class="timer" id="timer" aria-label="Time left">10:00</div>
   <div class="pair"><b id="start">---</b><span aria-hidden="true">&rarr;</span><b class="t" id="target">---</b></div>
-  <div class="trail" id="trail" aria-live="polite"></div>
+  <div class="trail mobile-made" id="trail" aria-live="polite"></div>
   <div class="drums" id="drums"></div>
   <p class="msg" id="msg" role="status"></p>
   <button class="go" id="check" type="button">Check my word</button>
@@ -48,17 +77,32 @@ h1 span{color:var(--y)}
   <div class="stars" id="stars" aria-label="Your stars"></div>
   <button class="exit" id="exit" type="button">Grown-ups: leave Kids mode</button>
 </main>
+<aside><h2>Words I made</h2><p class="count" id="count"></p><div class="made" id="made"></div></aside>
+</div>
 <div class="win" id="win" role="dialog" aria-modal="true"><div class="big">&#127775;</div><div id="wintxt">You did it!</div><button class="go" id="again" type="button" style="max-width:320px">Play again</button></div>
 <script>
 (function(){
   'use strict';
   var $=function(i){return document.getElementById(i)};
-  var words=[],set={},cur=[],trail=[],start='',target='',path=[],stars=0,over=false;
+  var pairs=[],idx=0,left=600,tick=null,helped=false,words=[],set={},cur=[],trail=[],start='',target='',path=[],stars=0,over=false;
   try{stars=+localStorage.getItem('vistr.kids.stars')||0}catch(e){}
   function showStars(){$('stars').textContent=stars?('★ '+stars):''}
   function nbrs(w){var o=[],i,c,x;for(i=0;i<3;i++)for(c=97;c<123;c++){x=w.slice(0,i)+String.fromCharCode(c)+w.slice(i+1);if(x!==w&&set[x])o.push(x)}return o}
   function bfs(a,b){var prev={},q=[a],i=0;prev[a]=null;while(i<q.length){var w=q[i++];if(w===b){var p=[];for(;w!==null;w=prev[w])p.unshift(w);return p}nbrs(w).forEach(function(n){if(!(n in prev)){prev[n]=w;q.push(n)}})}return null}
-  function pick(){
+  function mkPair(){var tries=0,a,b,p;
+    do{a=words[Math.random()*words.length|0];b=words[Math.random()*words.length|0];p=a!==b&&bfs(a,b);tries++}while((!p||p.length<4||p.length>5)&&tries<500);
+    return p?{a:a,b:b,p:p,done:false}:{a:'cat',b:'dog',p:bfs('cat','dog'),done:false}}
+  function mkPairs(){pairs=[];var seen={},q;while(pairs.length<10){q=mkPair();if(!seen[q.a+q.b]){seen[q.a+q.b]=1;pairs.push(q)}}}
+  function drawPairs(){['plist','mlist'].forEach(function(id){var box=$(id);box.innerHTML='';pairs.forEach(function(q,i){var b=document.createElement('button');b.type='button';b.textContent=q.a+' \u2192 '+q.b;b.className=(i===idx?'on ':'')+(q.done?'done':'');b.onclick=function(){idx=i;newGame()};box.appendChild(b)})})}
+  function fmt(n){return Math.floor(n/60)+':'+('0'+(n%60)).slice(-2)}
+  function startTimer(){clearInterval(tick);left=600;helped=false;showTime();tick=setInterval(function(){if(over){clearInterval(tick);return}left--;if(left<=0){left=0;clearInterval(tick);timeUp()}showTime()},1000)}
+  function showTime(){var t=$('timer');t.textContent=left>0?'\u23F1 '+fmt(left):'\u23F1 Help time';t.className='timer'+(left>0&&left<=60?' low':'')}
+  function timeUp(){helped=true;msg('Time is up! Here is a way. Keep going, you can still finish.','good');drawMade()}
+  function drawMade(){var m=$('made');m.innerHTML='';var mine=trail.slice(1);mine.forEach(function(w,i){var s=document.createElement('span');s.textContent=w;if(over&&i===mine.length-1)s.className='fin';m.appendChild(s)});
+    if(helped&&!over){var last=trail[trail.length-1],p=bfs(last,target)||[];p.slice(1).forEach(function(w){var s=document.createElement('span');s.className='help';s.textContent=w;m.appendChild(s)})}
+    $('count').textContent=mine.length?(mine.length+(mine.length===1?' word':' words')+' so far'):'Your words will show here.'}
+  function bubbles(){var w=$('win');w.querySelectorAll('.bub').forEach(function(x){x.remove()});var cols=['#ff9a3c','#ff6fb5','#4cc9f0','#8be04e','#ffd23f'],i;for(i=0;i<36;i++){var b=document.createElement('i');b.className='bub';var sz=20+Math.random()*60;b.style.cssText='left:'+Math.random()*100+'%;width:'+sz+'px;height:'+sz+'px;--c:'+cols[i%5]+';--dx:'+(Math.random()*80-40)+'px;animation-duration:'+(3+Math.random()*4)+'s;animation-delay:'+Math.random()*2+'s';w.appendChild(b)}}
+  function pick(){var q=pairs[idx];start=q.a;target=q.b;path=q.p;return;
     var tries=0,a,b,p;
     do{a=words[Math.random()*words.length|0];b=words[Math.random()*words.length|0];p=a!==b&&bfs(a,b);tries++}while((!p||p.length<4||p.length>5)&&tries<500);
     if(!p){a='cat';b='dog';p=bfs(a,b)}
@@ -75,7 +119,7 @@ h1 span{color:var(--y)}
   function roll(i,s){if(over)return;var c=cur[i].charCodeAt(0)-97;cur[i]=String.fromCharCode(97+((c+s+26)%26));msg('','');draw()}
   function msg(t,k){var m=$('msg');m.textContent=t;m.className='msg '+(k||'')}
   function drawTrail(){var t=$('trail');t.innerHTML='';trail.forEach(function(w,i){var s=document.createElement('span');s.textContent=w;if(i===trail.length-1)s.className='last';t.appendChild(s)})}
-  function newGame(){pick();trail=[start];over=false;$('start').textContent=start;$('target').textContent=target;setCur(start);drawTrail();msg('','');$('win').classList.remove('on')}
+  function newGame(){if(!pairs.length)mkPairs();pick();drawPairs();startTimer();trail=[start];over=false;$('start').textContent=start;$('target').textContent=target;setCur(start);drawTrail();drawMade();msg('','');$('win').classList.remove('on')}
   function bad(t){msg(t,'bad');var d=$('drums');d.classList.remove('shake');void d.offsetWidth;d.classList.add('shake')}
   function check(){
     if(over)return;
@@ -85,8 +129,8 @@ h1 span{color:var(--y)}
     if(diff>1)return bad('Just one letter at a time..');
     if(!set[w])return bad('Hmm, I do not know "'+w+'". Try another letter.');
     if(trail.indexOf(w)>=0)return bad('You already used that word.');
-    trail.push(w);drawTrail();msg('Yes! '+w+' is a word.','good');
-    if(w===target){over=true;stars++;try{localStorage.setItem('vistr.kids.stars',stars)}catch(e){}showStars();$('wintxt').textContent='You did it! You turned '+start+' into '+target+'!';setTimeout(function(){$('win').classList.add('on')},500)}
+    trail.push(w);drawTrail();drawMade();msg('Yes! '+w+' is a word.','good');
+    if(w===target){over=true;pairs[idx].done=true;clearInterval(tick);drawPairs();drawMade();bubbles();stars++;try{localStorage.setItem('vistr.kids.stars',stars)}catch(e){}showStars();$('wintxt').textContent='You did it! You turned '+start+' into '+target+'!';setTimeout(function(){$('win').classList.add('on')},500)}
   }
   function hint(){
     if(over)return;var last=trail[trail.length-1],p=bfs(last,target);
@@ -94,7 +138,7 @@ h1 span{color:var(--y)}
     var nx=p[1],i;for(i=0;i<3;i++)if(nx[i]!==last[i])break;
     setCur(last);msg('Try changing letter '+(i+1)+'. It could become "'+nx[i]+'".','good');
   }
-  $('check').onclick=check;$('hint').onclick=hint;$('newp').onclick=newGame;$('again').onclick=newGame;
+  $('check').onclick=check;$('hint').onclick=hint;$('newp').onclick=function(){mkPairs();idx=0;newGame()};$('again').onclick=function(){var n=pairs.findIndex(function(q){return !q.done});if(n<0){mkPairs();n=0}idx=n;newGame()};
   $('exit').onclick=function(){
     var a=3+(Math.random()*6|0),b=4+(Math.random()*5|0);
     var r=window.prompt('Grown-ups only. What is '+a+' + '+b+'?');
