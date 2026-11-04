@@ -741,6 +741,7 @@
     Plays.show();
     Weekly.show();
     Daily.show();
+    Paused.show();
 
     const live = S.mode === 'live';
     const goOffline = () => { goStandalone(); toast(t("You're offline. Solo games only.")); };
@@ -753,6 +754,8 @@
       if (a === 'menu') Menu.open();
       if (a === 'page') Menu.page(btn.dataset.page);
       if (a === 'solo') guard(() => startSolo(S.level));
+      if (a === 'resume') guard(() => Paused.resume());
+      if (a === 'discard-paused') Paused.discard();
       if (a === 'go-online' && S.mode !== 'live') goLive();
       if (a === 'toggle-net') { if (S.mode === 'live') goOffline(); else goLive(); }
       if (a === 'request') sendRequest(btn.dataset.code);
@@ -1171,6 +1174,7 @@
       if (a === 'hint') useHint();
       if (a === 'reset') resetDraft();
       if (a === 'roll') roll(Number(btn.dataset.slot), Number(btn.dataset.dir));
+      if (a === 'pause') Paused.pause();
       if (a === 'quit' && confirm(t('End this round now? Your score so far is saved.'))) {
         if (S.match.local) Local.finish(S.match, 'ended'); else api('POST', '/api/match/quit').catch(() => {});
       }
@@ -1633,6 +1637,63 @@
   // ───────────────────────── games played ─────────────────────────
   // The server counts online games itself. Offline games are counted on the phone and
   // reported the next time the server can be reached.
+
+  // ───────────────────────── pause / resume (solo) ─────────────────────────
+  // Signed in: the paused game is kept on the server. Offline: on this device. Neither expires.
+  const Paused = {
+    key: 'vistr.paused',
+    local() { try { return JSON.parse(saved(this.key) || 'null'); } catch (_) { return null; } },
+    async pause() {
+      const m = S.match; if (!m || m.status !== 'playing') return;
+      if (m.mode === 'duo') return toast(t('Pause works in solo games.'));
+      try {
+        if (m.local) {
+          clearTimeout(Local.timer);
+          saved(this.key, JSON.stringify({ level: m.level, intensity: m.intensity, lang: m.lang, startWord: m.startWord, remaining: Math.max(5000, m.endsAt - Date.now()), state: m.state, at: Date.now() }));
+        } else await api('POST', '/api/match/pause');
+      } catch (e) { return toast(e.message); }
+      clearInterval(S.clockTimer); S.match = null; S.game = null;
+      showHome(); toast(t('Game paused. Resume it any time from the home screen.'));
+    },
+    async show() {
+      const box = $('[data-paused]'); if (!box) return;
+      let z = null;
+      if (S.mode === 'live' && S.token) { try { z = (await api('GET', '/api/match/paused')).paused; } catch (_) {} }
+      else { const l = this.local(); if (l) z = { level: l.level, score: l.state.score, words: l.state.chain.filter(c => c.valid).length, remaining: l.remaining }; }
+      if (!z || $('[data-paused]') !== box) return;
+      const mins = Math.floor(z.remaining / 60000), secs = Math.round(z.remaining / 1000) % 60;
+      $('[data-paused-text]', box).textContent = t('Paused game: {n} letters, {s} points, {w} words, {m}:{c} left.', { n: z.level, s: z.score, w: z.words, m: mins, c: String(secs).padStart(2, '0') });
+      box.hidden = false;
+    },
+    async resume() {
+      try {
+        if (S.mode === 'live' && S.token) {
+          const r = await api('POST', '/api/match/resume');
+          S.match = r.match; startGame(r.match);
+          Object.assign(S.game, { current: r.me.current, draft: [...r.me.current], seq: r.me.lastSeq, streak: r.me.streak || 0, chain: [{ word: r.match.startWord, valid: true }, ...r.me.chain] });
+          $('[data-myscore]').textContent = r.match.players.find(p => p.me).score;
+        } else {
+          const z = this.local(); if (!z) return;
+          await Local.load(z.level, z.lang);
+          const m = Local.newMatch(z.level, z.intensity, z.lang), st = z.state;
+          m.state = st; m.startWord = z.startWord; m.status = 'playing'; m.serverNow = Date.now(); m.endsAt = Date.now() + z.remaining;
+          m.players[0] = { ...m.players[0], ready: true, score: st.score, jackpotsFound: st.found.length, jackpotsTotal: st.jackpots.length, streak: st.streak, skipsLeft: E.RULES.maxSkips - st.skips, hintsLeft: E.status(st).hintsLeft };
+          clearTimeout(Local.timer); Local.timer = setTimeout(() => Local.finish(m, 'time'), z.remaining);
+          S.match = m; startGame(m);
+          Object.assign(S.game, { current: st.current, draft: [...st.current], streak: st.streak || 0, chain: [{ word: z.startWord, valid: true }, ...st.chain] });
+          $('[data-myscore]').textContent = st.score;
+          saved(this.key, null);
+        }
+        renderStreak(); renderDrums(); renderChain(); renderHints(); renderSkips(); renderJackpots();
+      } catch (e) { toast(e.message); }
+    },
+    async discard() {
+      if (!confirm(t('Discard your paused game? Its points are not saved.'))) return;
+      try { if (S.mode === 'live' && S.token) await api('POST', '/api/match/paused/discard'); else saved(this.key, null); } catch (_) {}
+      const box = $('[data-paused]'); if (box) box.hidden = true;
+    },
+  };
+
   const Plays = {
     pending() { return Number(saved('vistr.unsentPlays')) || 0; },
     add() { saved('vistr.unsentPlays', String(this.pending() + 1)); this.flush(); },

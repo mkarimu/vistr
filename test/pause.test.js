@@ -1,0 +1,45 @@
+// Pause a solo game, restart the server, resume it. Own server on a spare port.
+const { spawn } = require('child_process');
+const fs = require('fs'), os = require('os'), path = require('path');
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vistr-pause-'));
+const PORT = 3800 + Math.floor(Math.random() * 400), B = `http://localhost:${PORT}`;
+let n = 0, bad = 0;
+const ok = (c, m) => { n++; if (!c) { bad++; console.log('FAIL: ' + m); } };
+const j = async (m, p, b, t) => { const r = await fetch(B + p, { method: m, headers: { 'Content-Type': 'application/json', ...(t ? { Authorization: 'Bearer ' + t } : {}) }, body: b ? JSON.stringify(b) : undefined }); return [r.status, await r.json().catch(() => ({}))]; };
+const start = () => spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, PORT, VISTR_DB: path.join(dir, 'db.json'), VISTR_OPEN_SIGNUP: '1' }, stdio: 'ignore' });
+const up = async () => { for (let i = 0; i < 40; i++) { try { await fetch(B + '/api/health'); return; } catch (_) { await new Promise(r => setTimeout(r, 250)); } } };
+const wait = ms => new Promise(r => setTimeout(r, ms));
+let srv = start();
+(async () => {
+  await up();
+  const [, a] = await j('POST', '/api/auth/register', { email: 'pause@example.com' });
+  let t = a.token;
+  ok((await j('POST', '/api/match/pause', {}, t))[0] === 409, 'nothing to pause yet');
+  await j('POST', '/api/match/single', { level: 5, intensity: 'learner', lang: 'en' }, t);
+  const [, rd] = await j('POST', '/api/match/ready', {}, t);
+  ok(rd.match.status === 'playing', 'game is playing');
+  const startWord = rd.match.startWord;
+  const [ps] = await j('POST', '/api/match/pause', {}, t);
+  ok(ps === 200, 'pause accepted');
+  const [, me1] = await j('GET', '/api/me', null, t);
+  ok(!me1.match, 'no running game after pause');
+  const [, pz] = await j('GET', '/api/match/paused', null, t);
+  ok(pz.paused && pz.paused.level === 5 && pz.paused.remaining > 100000, 'paused game is listed with its time left');
+  await wait(1500);
+  srv.kill(); await wait(500); srv = start(); await up();
+  const [, b] = await j('POST', '/api/auth/id', { code: a.player.code, email: 'pause@example.com' });
+  t = b.token;
+  const [, pz2] = await j('GET', '/api/match/paused', null, t);
+  ok(pz2.paused && pz2.paused.remaining === pz.paused.remaining, 'the paused game survives a server restart, time untouched');
+  const [rs, rr] = await j('POST', '/api/match/resume', {}, t);
+  ok(rs === 200 && rr.match.status === 'playing' && rr.match.startWord === startWord, 'resume brings back the same game');
+  ok(rr.match.endsAt - rr.match.serverNow > pz.paused.remaining - 3000, 'the clock continues from where it stopped');
+  ok((await j('GET', '/api/match/paused', null, t))[1].paused === null, 'nothing paused after resume');
+  ok((await j('POST', '/api/match/resume', {}, t))[0] === 404, 'cannot resume twice');
+  // pause again, then discard
+  await j('POST', '/api/match/pause', {}, t);
+  await j('POST', '/api/match/paused/discard', {}, t);
+  ok((await j('GET', '/api/match/paused', null, t))[1].paused === null, 'discard removes it');
+  console.log(n + ' pause checks, ' + bad + ' failed');
+  srv.kill(); process.exit(bad ? 1 : 0);
+})().catch(e => { console.log('ERR', e.message); srv.kill(); process.exit(1); });

@@ -873,6 +873,44 @@ const routes = {
     const m = createMatch(level, [me.id], body.intensity, body.lang);
     send(res, 200, { match: matchView(m, me.id) });
   },
+  // ── Pause / resume (solo games). The paused game is kept on the server with no expiry. ──
+  'POST /api/match/pause': async (req, res, { me }) => {
+    const m = matches.get(activeMatch.get(me.id));
+    if (!m || m.status !== 'playing') return send(res, 409, { error: 'There is no game running to pause.' });
+    if (m.mode !== 'single') return send(res, 400, { error: 'Pause works in solo games. Two-player games can be ended.' });
+    const p = m.players[me.id];
+    clearTimeout(m.timer); clearTimeout(m.turnTimer);
+    const st = store.getStats(); st.paused = st.paused || {};
+    st.paused[me.id] = { at: Date.now(), level: m.level, intensity: m.intensity, lang: m.lang, startWord: m.startWord,
+      remaining: Math.max(5000, m.endsAt - Date.now()),
+      p: { score: p.score, current: p.current, used: p.used, chain: p.chain, lastSeq: p.lastSeq, streak: p.streak, skips: p.skips, hintsUsed: p.hintsUsed, jackpots: p.jackpots, found: p.found, intensity: p.intensity, lang: p.lang } };
+    store.saveStats();
+    m.status = 'over'; matches.delete(m.id); activeMatch.delete(me.id);
+    broadcastPlayers();
+    send(res, 200, { ok: true });
+  },
+  'GET /api/match/paused': async (req, res, { me }) => {
+    const z = (store.getStats().paused || {})[me.id];
+    send(res, 200, { paused: z ? { level: z.level, intensity: z.intensity, score: z.p.score, words: z.p.chain.filter(c => c.valid).length, remaining: z.remaining, at: z.at } : null });
+  },
+  'POST /api/match/paused/discard': async (req, res, { me }) => {
+    const st = store.getStats(); if (st.paused) { delete st.paused[me.id]; store.saveStats(); }
+    send(res, 200, { ok: true });
+  },
+  'POST /api/match/resume': async (req, res, { me }) => {
+    const st = store.getStats(), z = (st.paused || {})[me.id];
+    if (!z) return send(res, 404, { error: 'There is no paused game to resume.' });
+    const old = matches.get(activeMatch.get(me.id));
+    if (old) finishMatch(old, 'abandoned');
+    const m = createMatch(z.level, [me.id], z.intensity, z.lang);
+    Object.assign(m.players[me.id], z.p, { ready: true, pending: false });
+    m.status = 'playing'; m.startWord = z.startWord; m.startedAt = Date.now(); m.endsAt = Date.now() + z.remaining;
+    m.timer = setTimeout(() => finishMatch(m, 'time'), z.remaining);
+    delete st.paused[me.id]; store.saveStats();
+    broadcastPlayers();
+    const q = m.players[me.id];
+    send(res, 200, { match: matchView(m, me.id), me: { current: q.current, chain: q.chain, lastSeq: q.lastSeq, streak: q.streak } });
+  },
   'POST /api/match/ready': async (req, res, { me }) => {
     const m = matches.get(activeMatch.get(me.id));
     if (!m || m.status !== 'pending') return send(res, 409, { error: 'There is no game waiting to start.' });

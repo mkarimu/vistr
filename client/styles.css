@@ -949,3 +949,7 @@ dialog.reader[open] { display: flex; }
 .game.chat-on .verdict { font-size: .95rem; min-height: 1.2em; }
 .game.chat-on .actions .btn { min-height: 42px; padding-top: 6px; padding-bottom: 6px; }
 @media (min-width: 700px) { .chat-fab.side { top: 40%; } }
+
+.paused-card{margin:10px 0;padding:12px 14px;border-radius:14px;background:rgba(255,210,63,.14);border:1px solid rgba(255,210,63,.5)}
+.paused-card p{margin:0 0 8px}
+.paused-row{display:flex;gap:12px;align-items:center}
