@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Vistr Kids</title>
+<style>
+:root{--bg:#2b1b5e;--card:#3d2a85;--o:#ff9a3c;--p:#ff6fb5;--s:#4cc9f0;--l:#8be04e;--y:#ffd23f;--ink:#241046}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100dvh;background:linear-gradient(#2b1b5e,#5b2a86);color:#fff;font:700 18px system-ui,"Comic Sans MS",sans-serif;-webkit-tap-highlight-color:transparent}
+main{max-width:520px;margin:0 auto;padding:14px 16px 28px;display:flex;flex-direction:column;align-items:center;gap:14px;min-height:100dvh}
+h1{margin:4px 0 0;font-size:32px;letter-spacing:.02em}
+h1 span{color:var(--y)}
+.hello{margin:0;font-size:20px;text-align:center;opacity:.95}
+.pair{display:flex;gap:10px;align-items:center;justify-content:center;font-size:26px;text-transform:uppercase;letter-spacing:.12em}
+.pair b{background:var(--card);border-radius:16px;padding:8px 16px}
+.pair .t{background:var(--l);color:var(--ink)}
+.drums{display:flex;gap:14px;justify-content:center;margin:6px 0}
+.drum{display:flex;flex-direction:column;align-items:center;gap:8px}
+.arr{width:84px;height:48px;border:0;border-radius:14px;font-size:24px;color:var(--ink);cursor:pointer;background:rgba(255,255,255,.85)}
+.arr:active{transform:scale(.95)}
+.face{width:84px;height:104px;border-radius:20px;display:grid;place-items:center;font-size:62px;text-transform:uppercase;color:var(--ink);box-shadow:0 6px 0 rgba(0,0,0,.28)}
+.drum:nth-child(1) .face{background:var(--o)}.drum:nth-child(2) .face{background:var(--p)}.drum:nth-child(3) .face{background:var(--s)}
+.go{width:100%;border:0;border-radius:20px;padding:16px;font:inherit;font-size:26px;background:var(--l);color:var(--ink);box-shadow:0 6px 0 rgba(0,0,0,.28);cursor:pointer}
+.go:active{transform:translateY(3px);box-shadow:0 3px 0 rgba(0,0,0,.28)}
+.row{display:flex;gap:10px;width:100%}
+.row button{flex:1;border:0;border-radius:16px;padding:12px;font:inherit;font-size:18px;background:var(--card);color:#fff;cursor:pointer}
+.msg{min-height:1.6em;font-size:22px;text-align:center;margin:0}
+.msg.bad{color:#ffb3b3}.msg.good{color:var(--l)}
+.trail{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;min-height:44px}
+.trail span{padding:4px 14px;border-radius:999px;background:var(--card);text-transform:uppercase;letter-spacing:.1em;font-size:20px}
+.trail span.last{background:var(--y);color:var(--ink)}
+.stars{font-size:22px;color:var(--y)}
+.shake{animation:sh .35s}
+@keyframes sh{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+.win{position:fixed;inset:0;background:rgba(36,16,70,.92);display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:20px}
+.win.on{display:flex}.win .big{font-size:72px}
+.exit{margin-top:auto;background:none;border:0;color:#cbb8ff;font:inherit;font-size:14px;text-decoration:underline;cursor:pointer;padding:10px}
+@media(prefers-reduced-motion:reduce){.shake{animation:none}}
+</style></head><body>
+<main>
+  <h1>Vistr <span>Kids</span></h1>
+  <p class="hello" id="hello">Change one letter at a time to turn the first word into the green word.</p>
+  <div class="pair"><b id="start">---</b><span aria-hidden="true">&rarr;</span><b class="t" id="target">---</b></div>
+  <div class="trail" id="trail" aria-live="polite"></div>
+  <div class="drums" id="drums"></div>
+  <p class="msg" id="msg" role="status"></p>
+  <button class="go" id="check" type="button">Check my word</button>
+  <div class="row"><button id="hint" type="button">&#128161; Help me</button><button id="newp" type="button">&#127922; New words</button></div>
+  <div class="stars" id="stars" aria-label="Your stars"></div>
+  <button class="exit" id="exit" type="button">Grown-ups: leave Kids mode</button>
+</main>
+<div class="win" id="win" role="dialog" aria-modal="true"><div class="big">&#127775;</div><div id="wintxt">You did it!</div><button class="go" id="again" type="button" style="max-width:320px">Play again</button></div>
+<script>
+(function(){
+  'use strict';
+  var $=function(i){return document.getElementById(i)};
+  var words=[],set={},cur=[],trail=[],start='',target='',path=[],stars=0,over=false;
+  try{stars=+localStorage.getItem('vistr.kids.stars')||0}catch(e){}
+  function showStars(){$('stars').textContent=stars?('★ '+stars):''}
+  function nbrs(w){var o=[],i,c,x;for(i=0;i<3;i++)for(c=97;c<123;c++){x=w.slice(0,i)+String.fromCharCode(c)+w.slice(i+1);if(x!==w&&set[x])o.push(x)}return o}
+  function bfs(a,b){var prev={},q=[a],i=0;prev[a]=null;while(i<q.length){var w=q[i++];if(w===b){var p=[];for(;w!==null;w=prev[w])p.unshift(w);return p}nbrs(w).forEach(function(n){if(!(n in prev)){prev[n]=w;q.push(n)}})}return null}
+  function pick(){
+    var tries=0,a,b,p;
+    do{a=words[Math.random()*words.length|0];b=words[Math.random()*words.length|0];p=a!==b&&bfs(a,b);tries++}while((!p||p.length<4||p.length>5)&&tries<500);
+    if(!p){a='cat';b='dog';p=bfs(a,b)}
+    start=a;target=b;path=p;
+  }
+  function setCur(w){cur=w.split('');draw()}
+  function draw(){var d=$('drums');d.innerHTML='';cur.forEach(function(ch,i){
+    var col=document.createElement('div');col.className='drum';
+    var up=document.createElement('button');up.className='arr';up.type='button';up.textContent='▲';up.setAttribute('aria-label','Letter '+(i+1)+' up');
+    var f=document.createElement('div');f.className='face';f.textContent=ch;
+    var dn=document.createElement('button');dn.className='arr';dn.type='button';dn.textContent='▼';dn.setAttribute('aria-label','Letter '+(i+1)+' down');
+    up.onclick=function(){roll(i,1)};dn.onclick=function(){roll(i,-1)};
+    col.appendChild(up);col.appendChild(f);col.appendChild(dn);d.appendChild(col)})}
+  function roll(i,s){if(over)return;var c=cur[i].charCodeAt(0)-97;cur[i]=String.fromCharCode(97+((c+s+26)%26));msg('','');draw()}
+  function msg(t,k){var m=$('msg');m.textContent=t;m.className='msg '+(k||'')}
+  function drawTrail(){var t=$('trail');t.innerHTML='';trail.forEach(function(w,i){var s=document.createElement('span');s.textContent=w;if(i===trail.length-1)s.className='last';t.appendChild(s)})}
+  function newGame(){pick();trail=[start];over=false;$('start').textContent=start;$('target').textContent=target;setCur(start);drawTrail();msg('','');$('win').classList.remove('on')}
+  function bad(t){msg(t,'bad');var d=$('drums');d.classList.remove('shake');void d.offsetWidth;d.classList.add('shake')}
+  function check(){
+    if(over)return;
+    var w=cur.join(''),last=trail[trail.length-1],diff=0,i;
+    for(i=0;i<3;i++)if(w[i]!==last[i])diff++;
+    if(diff===0)return bad('Change one letter first.');
+    if(diff>1)return bad('Just one letter at a time..');
+    if(!set[w])return bad('Hmm, I do not know "'+w+'". Try another letter.');
+    if(trail.indexOf(w)>=0)return bad('You already used that word.');
+    trail.push(w);drawTrail();msg('Yes! '+w+' is a word.','good');
+    if(w===target){over=true;stars++;try{localStorage.setItem('vistr.kids.stars',stars)}catch(e){}showStars();$('wintxt').textContent='You did it! You turned '+start+' into '+target+'!';setTimeout(function(){$('win').classList.add('on')},500)}
+  }
+  function hint(){
+    if(over)return;var last=trail[trail.length-1],p=bfs(last,target);
+    if(!p||p.length<2)return msg('Try going back to the first word.','bad');
+    var nx=p[1],i;for(i=0;i<3;i++)if(nx[i]!==last[i])break;
+    setCur(last);msg('Try changing letter '+(i+1)+'. It could become "'+nx[i]+'".','good');
+  }
+  $('check').onclick=check;$('hint').onclick=hint;$('newp').onclick=newGame;$('again').onclick=newGame;
+  $('exit').onclick=function(){
+    var a=3+(Math.random()*6|0),b=4+(Math.random()*5|0);
+    var r=window.prompt('Grown-ups only. What is '+a+' + '+b+'?');
+    if(r!==null&&+r===a+b){location.href='../'}
+  };
+  fetch('words.txt').then(function(r){return r.text()}).then(function(t){
+    words=t.split(/\s+/).filter(Boolean);words.forEach(function(w){set[w]=1});showStars();newGame();
+  }).catch(function(){$('hello').textContent='Could not load words. Check your connection and reload.'});
+})();
+</script></body></html>

@@ -552,6 +552,7 @@
     app.replaceChildren($(`#t-${id}`).content.cloneNode(true));
     translateDom(app);
     $$('[data-native-only]').forEach(el => { el.hidden = !isNative; });
+    $$('[data-web-only]').forEach(el => { el.hidden = isNative; });
     $$('[data-live-only]').forEach(el => { el.hidden = S.mode !== 'live'; });
     $$('[data-standalone-only]').forEach(el => { el.hidden = S.mode === 'live'; });
     setNet(S.mode === 'live' ? 'online' : 'offline');
@@ -1959,3 +1960,5 @@
   // Whatever happens at start-up, never leave a blank screen: fall back to standalone.
   boot().catch(() => { S.mode = 'standalone'; showHome(); });
 })();
+
+document.addEventListener('click', e => { const a = e.target.closest && e.target.closest('[data-kids-card]'); if (a && !confirm('Switch to Kids mode? It uses 3-letter words. To come back, a grown-up closes Kids mode.')) e.preventDefault(); });
