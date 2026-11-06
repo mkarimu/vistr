@@ -86,6 +86,10 @@ const FIRST_ID = 10, LAST_ID = 9999;
 function findPlayerByEmail(email) {
   return Object.values(db.players).find(p => p.email === email) || null;
 }
+function findPlayerByName(name) {
+  const n = String(name || '').trim().toLowerCase();
+  return n ? Object.values(db.players).find(p => (p.name || '').toLowerCase() === n || (p.mq || '').toLowerCase() === n) || null : null;
+}
 function findPlayerByCode(code) {
   return Object.values(db.players).find(p => p.code === code) || null;
 }
@@ -196,7 +200,7 @@ function levelBoard(level, intensity = 'intermediate', lang = 'en', limit = 20) 
     if (!cur || byScore(r, cur) < 0) best.set(r.playerId, r);
   }
   return [...best.values()].sort(byScore).slice(0, limit)
-    .map(r => ({ playerCode: getPlayer(r.playerId)?.code || '?', score: r.score, finishedAt: r.finishedAt }));
+    .map(r => ({ playerCode: getPlayer(r.playerId)?.code || '?', name: getPlayer(r.playerId)?.name || '', score: r.score, finishedAt: r.finishedAt }));
 }
 
 // "Show me as available" switch; on unless the player turned it off.
@@ -366,7 +370,7 @@ function playReport(from, to) {
 function ratingBoard(limit = 10) {
   return Object.values(db.players).filter(p => (p.career?.rated || 0) >= 3)
     .sort((a, b) => b.career.rating - a.career.rating || b.career.points - a.career.points).slice(0, limit)
-    .map(p => ({ playerCode: p.code, rating: p.career.rating, points: p.career.points, rank: rankFor(p.career.points) }));
+    .map(p => ({ playerCode: p.code, name: p.name || '', rating: p.career.rating, points: p.career.points, rank: rankFor(p.career.points) }));
 }
 // For the admin page: everyone, with their record and email.
 function allPlayers() {
@@ -467,7 +471,7 @@ module.exports = {
   addMessage, listMessages, deleteMessage, setReview, getReview, allReviews, setReviewStatus,
   ready, flushRemote, remote: !!REMOTE,
   countAd, adStats, isAvailable, setAvailable,
-  findPlayerByEmail, findPlayerByCode, getPlayer, createPlayer,
+  findPlayerByEmail, findPlayerByCode, findPlayerByName, getPlayer, createPlayer,
   createSession, revokeOtherSessions, playerForToken, deleteSession, addResult, topTen, levelBoard,
   findPlayerByMq, linkMq, createAdminSession, adminSessionOk, setCode, setPaused,
 };

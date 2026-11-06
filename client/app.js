@@ -16,6 +16,10 @@
     try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (_) { return null; }
   };
 
+  // A player is shown by username when they have one, else as "Player 12".
+  const who = (code, name) => name ? name : t('Player {p}', { p: code });
+  const whoCode = code => { const o = (S.match?.players || []).find(p => String(p.playerCode) === String(code)) || (S.players || []).find(p => String(p.playerCode) === String(code)); return who(code, o?.name); };
+
   const S = {
     // Server address: one set by hand on the "can't reach" screen, else the one built into
     // the app (config.js), else the address this page came from (PC browser).
@@ -810,11 +814,11 @@
     renderLobby();
     const out = $('[data-outgoing]');
     out.hidden = !S.outgoing;
-    if (S.outgoing) $('[data-outgoing-text]').textContent = t('Request sent to Player {p} for {n} letters, {i}. Waiting for them…', { p: S.outgoing.to, n: S.outgoing.level, i: ilabel(S.outgoing.intensity) }) + langNote(S.outgoing.lang);
+    if (S.outgoing) $('[data-outgoing-text]').textContent = t('Request sent to {p} for {n} letters, {i}. Waiting for them…', { p: whoCode(S.outgoing.to), n: S.outgoing.level, i: ilabel(S.outgoing.intensity) }) + langNote(S.outgoing.lang);
     const others = (S.players || []).filter(p => p.playerCode !== S.player?.code);
     ul.innerHTML = others.length ? others.map(p => `
       <li data-player="${esc(p.playerCode)}">
-        <span class="who"><span class="pid">${t('Player {p}', { p: esc(p.playerCode) })}${p.lang && p.lang !== S.lang ? ` <small class="lang-tag">${esc(E.LANGS[p.lang]?.name || p.lang)}</small>` : ''}</span>
+        <span class="who"><span class="pid">${esc(who(p.playerCode, p.name))}${p.name ? ` <small class="lang-tag">#${esc(p.playerCode)}</small>` : ''}${p.lang && p.lang !== S.lang ? ` <small class="lang-tag">${esc(E.LANGS[p.lang]?.name || p.lang)}</small>` : ''}</span>
           <span class="status ${p.status === 'free' && !p.requested ? 'on' : ''}" ${p.status === 'solo' ? `data-ends="${p.endsAt}" data-lvl="${p.level}" data-int="${esc(ilabel(p.intensity))}"` : ''}>${statusText(p)}</span></span>
         ${p.requested || (S.outgoing && S.outgoing.to === p.playerCode) ? '' :
           `<button class="btn" type="button" data-action="request" data-code="${esc(p.playerCode)}">${t('Request')}</button>`}
@@ -1005,7 +1009,7 @@
         c.nextRank ? t('{n} more points to {r}', { n: num(c.nextRank.at - c.points), r: t(c.nextRank.name) }) : '',
       ].filter(Boolean).join(' · ');
       $('[data-top-rated]', box).innerHTML = (r.top || []).length
-        ? r.top.map(p => `<li class="${p.playerCode === c.playerCode ? 'mine' : ''}"><span>${t('Player {p}', { p: esc(p.playerCode) })} <small>${esc(t(p.rank))}</small></span><b>${num(p.rating)}</b></li>`).join('')
+        ? r.top.map(p => `<li class="${p.playerCode === c.playerCode ? 'mine' : ''}"><span>${esc(who(p.playerCode, p.name))} <small>${esc(t(p.rank))}</small></span><b>${num(p.rating)}</b></li>`).join('')
         : `<li class="empty">${t('Players appear here after 3 online games.')}</li>`;
     },
   };
@@ -1036,7 +1040,7 @@
   function showRequest(d) {
     const dlg = $('#request-dialog');
     translateDom(dlg);
-    $('[data-from]', dlg).textContent = t('Player {p}', { p: d.from });
+    $('[data-from]', dlg).textContent = who(d.from, d.fromName);
     $('[data-level]', dlg).textContent = d.level;
     $('[data-req-intensity]', dlg).textContent = ilabel(d.intensity) + langNote(d.lang);
     const note = $('[data-solo-note]', dlg);
@@ -1069,15 +1073,15 @@
     const iAsked = d.from === S.player?.code;
     if (iAsked) {
       S.outgoing = null;
-      const msg = { declined: t('Player {p} said no this time.', { p: d.to }), expired: t("Player {p} didn't answer in time.", { p: d.to }),
-        left: t('Player {p} went offline.', { p: d.to }), cancelled: '' }[d.reason];
+      const msg = { declined: t('{p} said no this time.', { p: whoCode(d.to) }), expired: t("{p} didn't answer in time.", { p: whoCode(d.to) }),
+        left: t('{p} went offline.', { p: whoCode(d.to) }), cancelled: '' }[d.reason];
       if (msg) toast(msg);
       if (S.screen === 'home') renderPlayers();
     } else {
       const dlg = $('#request-dialog');
       if (dlg.open && d.reason !== 'accepted') {
         dlg.returnValue = 'gone'; dlg.close();
-        toast(d.reason === 'cancelled' ? t('Player {p} cancelled the request.', { p: d.from }) : t('That request closed.'));
+        toast(d.reason === 'cancelled' ? t('{p} cancelled the request.', { p: whoCode(d.from) }) : t('That request closed.'));
       }
     }
   }
@@ -1099,7 +1103,7 @@
     try {
       const r = await api('GET', `/api/scores?level=${level}&intensity=${S.intensity}&lang=${S.lang}`);
       el.innerHTML = boardHtml(t('Your top 10, {n} letters, {i}', { n: level, i: ilabel(S.intensity) }), r.topTen.map(x => ({ name: fmtDate(x.finishedAt), score: x.score, mine: x.finishedAt === mineHighlight })), t('Your best games will show here.'))
-        + boardHtml(t('All-time, {n} letters, {i}', { n: level, i: ilabel(S.intensity) }), r.board.map(b => ({ name: t('Player {p}', { p: b.playerCode }), score: b.score, mine: b.playerCode === S.player?.code })), t('No games yet at this level.'));
+        + boardHtml(t('All-time, {n} letters, {i}', { n: level, i: ilabel(S.intensity) }), r.board.map(b => ({ name: who(b.playerCode, b.name), score: b.score, mine: b.playerCode === S.player?.code })), t('No games yet at this level.'));
     } catch (e) { el.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
   }
   function boardHtml(title, rows, empty) {
@@ -1127,7 +1131,7 @@
     $('[data-title]').textContent = m.mode === 'duo' ? t('Both players tap Start') : t('Solo, {n} letters, {i}', { n: m.level, i: ilabel(m.intensity) });
     const me = m.players.find(p => p.me);
     $('[data-players]').innerHTML = m.players.map(p => `
-      <li><span class="pid">${p.me ? t('You') : t('Player {p}', { p: esc(p.playerCode) })}</span>
+      <li><span class="pid">${p.me ? t('You') : esc(who(p.playerCode, p.name))}</span>
       <span class="status ${p.ready ? 'on' : ''}">${t(!p.online && !p.me ? 'Offline' : p.ready ? 'Ready' : 'Not ready')}</span></li>`).join('');
     const btn = $('[data-action=ready]');
     btn.disabled = me.ready;
@@ -1165,7 +1169,7 @@
     S.clockTimer = setInterval(tickClock, 250);
     say(m.mode !== 'duo' ? t('Roll one letter to make a new word.')
       : S.game.myTurn ? t('You go first. Roll one letter to make a new word.')
-      : t('Player {p} goes first. Your drums unlock on your turn.', { p: m.turnCode }), 'info');
+      : t('{p} goes first. Your drums unlock on your turn.', { p: whoCode(m.turnCode) }), 'info');
     app.onclick = e => {
       const btn = e.target.closest('[data-action]'); if (!btn) return;
       const a = btn.dataset.action;
@@ -1203,7 +1207,7 @@
     box.hidden = !g.duo;
     if (!g.duo) return;
     box.classList.toggle('mine', g.myTurn);
-    $('[data-turn-who]').textContent = g.myTurn ? t('Your turn') : t("Player {p}'s turn", { p: g.turnCode });
+    $('[data-turn-who]').textContent = g.myTurn ? t('Your turn') : t("{p}'s turn", { p: whoCode(g.turnCode) });
   }
   // The server says whose turn it is now, and what the last move was.
   function onBoard(d) {
@@ -1220,15 +1224,15 @@
     if (d.jackpotsTotal !== undefined) { const bump = d.jackpotsFound !== g.jackpots.found; g.jackpots = { found: d.jackpotsFound, total: d.jackpotsTotal }; renderJackpots(bump); }
     if (theirs) {
       const W = (last.word || '').toUpperCase();
-      const msg = last.outcome === 'valid' ? t('Player {p} made {w} (+{n}).', { p: last.by, w: W, n: last.points || 0 })
-        : last.outcome === 'invalid' ? t('Player {p} tried {w}: not a word.', { p: last.by, w: W })
-        : last.outcome === 'skip' ? t('Player {p} took a new word.', { p: last.by })
-        : last.outcome === 'timeout' ? t('Player {p} ran out of time.', { p: last.by }) : '';
+      const msg = last.outcome === 'valid' ? t('{p} made {w} (+{n}).', { p: whoCode(last.by), w: W, n: last.points || 0 })
+        : last.outcome === 'invalid' ? t('{p} tried {w}: not a word.', { p: whoCode(last.by), w: W })
+        : last.outcome === 'skip' ? t('{p} took a new word.', { p: whoCode(last.by) })
+        : last.outcome === 'timeout' ? t('{p} ran out of time.', { p: whoCode(last.by) }) : '';
       say(`${msg} ${t('Your turn!')}`.trim(), 'good');
       renderParts([]); $('[data-drums]')?.classList.remove('good', 'bad');
       if (navigator.vibrate) navigator.vibrate(60);
     } else if (last.outcome === 'timeout' && was) {
-      say(t("Time's up for that turn. Player {p}'s go.", { p: g.turnCode }), 'bad');
+      say(t("Time's up for that turn. {p}'s go.", { p: whoCode(g.turnCode) }), 'bad');
     }
     if (S.screen === 'game') { renderDrums(); renderChain(); renderHints(); renderSkips(); renderTurn(); }
   }
@@ -1267,7 +1271,7 @@
 
   function roll(slot, dir) {
     const g = S.game; if (!g) return;
-    if (g.duo && !g.myTurn) { say(t("Wait for your turn. It's Player {p}'s go.", { p: g.turnCode }), 'info'); return; }
+    if (g.duo && !g.myTurn) { say(t("Wait for your turn. It's {p}'s go.", { p: whoCode(g.turnCode) }), 'info'); return; }
     if (g.locked) return;
     if (!oneLetter(slot)) return;
     const AB = abc(), k = AB.indexOf(g.draft[slot]);
@@ -1312,7 +1316,7 @@
       scoreEl.textContent = r.score;
       const mine = S.match.players.find(p => p.me); if (mine) mine.score = r.score;
       const passes = g.duo && (r.outcome === 'valid' || r.outcome === 'invalid');
-      say(r.message + (passes ? '. ' + t("Player {p}'s turn.", { p: S.match.players.find(p => !p.me)?.playerCode }) : ''), r.outcome === 'valid' ? 'good' : r.outcome === 'invalid' ? 'bad' : 'info');
+      say(r.message + (passes ? '. ' + t("{p}'s turn.", { p: (o => who(o?.playerCode, o?.name))(S.match.players.find(p => !p.me)) }) : ''), r.outcome === 'valid' ? 'good' : r.outcome === 'invalid' ? 'bad' : 'info');
       renderParts(r.parts);
       const drums = $('[data-drums]');
       drums.classList.remove('good', 'bad');
@@ -1504,7 +1508,7 @@
     const box = $('[data-opp]'); if (!box) return;
     box.hidden = !opp;
     if (opp) {
-      $('[data-oppcode]').textContent = t('Player {p}', { p: opp.playerCode }) + (opp.online === false ? ` (${t('offline')})` : '');
+      $('[data-oppcode]').textContent = who(opp.playerCode, opp.name) + (opp.online === false ? ` (${t('offline')})` : '');
       const os = $('[data-oppscore]');
       if (os.textContent !== String(opp.score)) { if (os.textContent !== '') replay(os, 'pop'); os.textContent = opp.score; }
     }
@@ -1550,7 +1554,7 @@
     if (/^\p{L}$/u.test(e.key) && !e.ctrlKey && !e.metaKey) {
       // Typing a letter sets the focused drum directly.
       e.preventDefault();
-      if (blocked(g)) { if (g.duo && !g.myTurn) say(t("Wait for your turn. It's Player {p}'s go.", { p: g.turnCode }), 'info'); return; }
+      if (blocked(g)) { if (g.duo && !g.myTurn) say(t("Wait for your turn. It's {p}'s go.", { p: whoCode(g.turnCode) }), 'info'); return; }
       const want = e.key.toLowerCase();
       const cur = g.draft[g.focus];
       if (!abc().includes(want)) return;
@@ -1579,21 +1583,21 @@
     const me = m.players.find(p => p.me), opp = m.players.find(p => !p.me);
     const title = !opp ? t('You scored {n}', { n: me.score })
       : me.score > opp.score ? t('You won, {a} to {b}', { a: me.score, b: opp.score })
-      : me.score < opp.score ? t('Player {p} won, {a} to {b}', { p: opp.playerCode, a: opp.score, b: me.score })
+      : me.score < opp.score ? t('{p} won, {a} to {b}', { p: who(opp.playerCode, opp.name), a: opp.score, b: me.score })
       : t('A draw at {n}', { n: me.score });
     const why = d.reason === 'opponent-left' ? t('The other player disconnected.')
-      : d.reason === 'skips' ? (opp && d.endedBy !== S.player?.code ? t('Player {p} used the last skip.', { p: d.endedBy }) : t('You used your last skip.'))
-      : d.reason === 'ended' && opp ? (d.endedBy === S.player?.code ? t('You ended the round.') : t('Player {p} ended the round.', { p: d.endedBy })) : '';
+      : d.reason === 'skips' ? (opp && d.endedBy !== S.player?.code ? t('{p} used the last skip.', { p: who(d.endedBy, d.endedByName) }) : t('You used your last skip.'))
+      : d.reason === 'ended' && opp ? (d.endedBy === S.player?.code ? t('You ended the round.') : t('{p} ended the round.', { p: who(d.endedBy, d.endedByName) })) : '';
     $('[data-title]').textContent = title + (why ? '. ' + why : '');
     const mine = d.topTen.find(t => t.finishedAt && Math.abs(t.finishedAt - Date.now()) < 10_000);
     $('[data-final]').innerHTML = `
       <div class="row ${opp && me.score > opp.score ? 'win' : ''}"><span>${t('You')}</span><b>${me.score}</b></div>
-      ${opp ? `<div class="row ${opp.score > me.score ? 'win' : ''}"><span>${t('Player {p}', { p: esc(opp.playerCode) })}</span><b>${opp.score}</b></div>` : ''}
+      ${opp ? `<div class="row ${opp.score > me.score ? 'win' : ''}"><span>${esc(who(opp.playerCode, opp.name))}</span><b>${opp.score}</b></div>` : ''}
       ${mine?.chain?.length > 1 ? `<p class="words">${mine.chain.map(esc).join(' › ')}</p>` : ''}
       ${d.record ? recordLine(d.record) : ''}`;
     if (d.record) S.record = null;   // home fetches the fresh one
     $('[data-boards]').innerHTML = boardHtml(t('Your top 10, {n} letters, {i}', { n: m.level, i: ilabel(m.intensity) }), d.topTen.map(x => ({ name: fmtDate(x.finishedAt), score: x.score, mine: x === mine })), t('No games saved yet.'))
-      + (d.local ? '' : boardHtml(t('All-time, {n} letters, {i}', { n: m.level, i: ilabel(m.intensity) }), d.board.map(b => ({ name: t('Player {p}', { p: b.playerCode }), score: b.score, mine: b.playerCode === S.player?.code })), t('No games yet.')));
+      + (d.local ? '' : boardHtml(t('All-time, {n} letters, {i}', { n: m.level, i: ilabel(m.intensity) }), d.board.map(b => ({ name: who(b.playerCode, b.name), score: b.score, mine: b.playerCode === S.player?.code })), t('No games yet.')));
     app.onclick = e => {
       const a = e.target.closest('[data-action]')?.dataset.action;
       if (a === 'home') showHome();

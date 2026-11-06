@@ -1,7 +1,7 @@
 /* Vistr chat: opens when an invite is accepted, stays until both players end it, and the server keeps the history. */
 (function () {
   'use strict';
-  var H = null, chats = {}, cur = '', box = null, fab = null, listEl = null, msgsEl = null, headEl = null, form = null, endBtn = null, openPanel = false, inGameSeen = false;
+  var H = null, chats = {}, cur = '', box = null, fab = null, listEl = null, msgsEl = null, headEl = null, form = null, endBtn = null, openPanel = false, inGameSeen = false, userToggled = false;
   function T(s, v) { return H && H.t ? H.t(s, v) : s; }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function label(c) { var s = chats[c]; return s && s.state.name ? s.state.name + ' (' + c + ')' : T('Player {p}', { p: c }); }
@@ -10,7 +10,7 @@
   function build() {
     if (box) return;
     fab = el('button', 'chat-fab', ''); fab.type = 'button'; fab.hidden = true; fab.setAttribute('aria-label', 'Chat');
-    fab.onclick = function () { setPanel(!openPanel); };
+    fab.onclick = function () { userToggled = true; setPanel(!openPanel); };
     box = el('section', 'chat-panel'); box.hidden = true; box.setAttribute('aria-label', 'Chat');
     var top = el('div', 'chat-top'); headEl = el('b', 'chat-title', ''); var back = el('button', 'chat-x', '←'); back.type = 'button'; back.title = T('All chats');
     back.onclick = function () { cur = ''; render(); };
@@ -52,6 +52,7 @@
 
   function render() {
     if (!box) return;
+    if (openPanel && !userToggled && document.querySelector('[data-action=ready]')) openPanel = false;   // the panel must not cover the Start button
     var any = Object.keys(chats).length > 0, u = totalUnread(), g = place();
     inGameSeen = !!g;
     fab.hidden = !any; fab.textContent = g ? '\uD83D\uDCAC' + (u ? ' ' + u : '') : T('Chat') + (u ? ' (' + u + ')' : ''); fab.classList.toggle('has', u > 0); fab.classList.toggle('side', !!g);
@@ -85,7 +86,7 @@
     if (!prev) prev = chats[c] = { state: st, msgs: [], loaded: false };
     prev.state = st;
     if (st.open && !wasOpen) {   // just opened: bring the chat up so players can talk before the game
-      cur = c; prev.loaded = false; prev.shown = false; openPanel = !document.querySelector('.screen.game'); load(c);
+      userToggled = false; cur = c; prev.loaded = false; prev.shown = false; openPanel = !document.querySelector('.screen.game, [data-action=ready]'); load(c);
       H.toast(T('Chat with {p} is open', { p: label(c) }));
     }
     render(); markRead(c);

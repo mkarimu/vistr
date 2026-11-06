@@ -210,7 +210,7 @@ function availablePlayers() {
     const st = playerStatus(pid);
     if (st.status === 'busy') continue;
     const requested = incoming.has(pid) || requests.has(pid);
-    list.push({ playerCode: store.getPlayer(pid).code, lang: playerLang.get(pid) || 'en', ...st, ...(requested ? { status: st.status, requested: true } : {}) });
+    list.push({ playerCode: store.getPlayer(pid).code, name: store.getPlayer(pid).name || '', lang: playerLang.get(pid) || 'en', ...st, ...(requested ? { status: st.status, requested: true } : {}) });
   }
   return list.sort((a, b) => (a.status === 'free' ? 0 : 1) - (b.status === 'free' ? 0 : 1) || Number(a.playerCode) - Number(b.playerCode));
 }
@@ -287,7 +287,7 @@ function matchView(m, forId) {
     startWord: m.startWord, endsAt: m.endsAt, serverNow: Date.now(),
     ...(m.mode === 'duo' ? { turnSeconds: TURN_SECONDS, ...boardView(m, forId) } : {}),
     players: Object.entries(m.players).map(([pid, p]) => ({
-      playerCode: store.getPlayer(pid).code, me: pid === forId, ready: p.ready,
+      playerCode: store.getPlayer(pid).code, name: store.getPlayer(pid).name || '', me: pid === forId, ready: p.ready,
       online: isOnline(pid), score: p.score, current: p.current, moves: p.chain.length,
       ...(pid === forId ? { streak: p.streak, skips: p.skips, skipsLeft: scoring.RULES.maxSkips - p.skips, hintsLeft: engine.status(p).hintsLeft, jackpotsFound: p.found.length, jackpotsTotal: p.jackpots.length } : {}),
     })),
@@ -381,7 +381,7 @@ function finishMatch(m, reason) {
   for (const pid of ids) {
     activeMatch.delete(pid);
     push(pid, 'match-over', {
-      reason, endedBy: m.endedBy || null, match: matchView(m, pid), record: records[pid] || store.recordView(pid),
+      reason, endedBy: m.endedBy || null, endedByName: (store.findPlayerByCode(m.endedBy || '') || {}).name || '', match: matchView(m, pid), record: records[pid] || store.recordView(pid),
       topTen: store.topTen(pid, m.level, m.intensity, m.lang), board: store.levelBoard(m.level, m.intensity, m.lang),
     });
   }
@@ -409,7 +409,7 @@ function submit(m, pid, word, seq) {
       passTurn(m, { by: store.getPlayer(pid).code, word: result.word, outcome: result.outcome, points: result.points, fresh: result.fresh || null });
     }
     for (const other of Object.keys(m.players)) {
-      if (other !== pid) push(other, 'opponent', { playerCode: store.getPlayer(pid).code, score: p.score, current: p.current, moves: p.chain.length });
+      if (other !== pid) push(other, 'opponent', { playerCode: store.getPlayer(pid).code, name: store.getPlayer(pid).name || '', score: p.score, current: p.current, moves: p.chain.length });
     }
     return result;
   } finally {
@@ -824,9 +824,10 @@ const routes = {
   'POST /api/request': async (req, res, { me, body }) => {
     const level = Number(body.level);
     if (!dict.LEVELS.includes(level)) return send(res, 400, { error: 'Pick a word length from 4 to 7 first.' });
-    const code = String(body.playerCode || '').replace(/\D/g, '');
-    const target = store.findPlayerByCode(code);
-    if (!target || target.id === me.id) return send(res, 404, { error: `No other player has the ID ${code || '(blank)'}.` });
+    const typed = String(body.playerCode || '').trim();
+    const target = /[^\d\s]/.test(typed) ? store.findPlayerByName(typed) : store.findPlayerByCode(typed.replace(/\D/g, ''));   // an ID number, or a username
+    const code = target ? target.code : typed.replace(/\D/g, '');
+    if (!target || target.id === me.id) return send(res, 404, { error: `No other player has the ID or username ${typed || '(blank)'}.` });
     if (!isOnline(target.id) || !store.isAvailable(target.id)) return send(res, 409, { error: `Player ${code} isn't available right now.` });
     if (playerStatus(target.id).status === 'busy') return send(res, 409, { error: `Player ${code} is in a two-player game.` });
     if (incoming.has(target.id) || requests.has(target.id)) return send(res, 409, { error: `Player ${code} is answering another request. Try again in a minute.` });
@@ -840,7 +841,7 @@ const routes = {
     incoming.set(target.id, me.id);
     const st = playerStatus(target.id);
     const theirMatch = matches.get(activeMatch.get(target.id));
-    push(target.id, 'request', { from: me.code, level, intensity, lang, expiresIn: REQUEST_MS / 1000,
+    push(target.id, 'request', { from: me.code, fromName: me.name || '', level, intensity, lang, expiresIn: REQUEST_MS / 1000,
       inSolo: st.status === 'solo', soloScore: st.status === 'solo' ? theirMatch.players[target.id].score : null });
     broadcastPlayers();
     send(res, 200, { ok: true, to: code, level, intensity, lang, expiresIn: REQUEST_MS / 1000 });
@@ -943,7 +944,7 @@ const routes = {
       passTurn(m, { by: me.code, outcome: 'skip', fresh: r.fresh });
     }
     for (const other of Object.keys(m.players)) {
-      if (other !== me.id) push(other, 'opponent', { playerCode: me.code, score: p.score, current: p.current, moves: p.chain.length, skips: p.skips });
+      if (other !== me.id) push(other, 'opponent', { playerCode: me.code, name: me.name || '', score: p.score, current: p.current, moves: p.chain.length, skips: p.skips });
     }
     send(res, 200, r);
     if (r.ended) { m.endedBy = me.code; finishMatch(m, 'skips'); }
