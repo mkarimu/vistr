@@ -1003,3 +1003,17 @@ body:not(.yes-missing) a[href="missing/"] { display: none !important; }
 .appbar .menu-btn, .appbar .music-btn { flex: none; }
 .appbar .net-pill { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; }
 .appbar .you { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── chat = sticky bar at the bottom, 2x the ad height, above the ad; the game stays playable above it ── */
+.chat-panel.docked { position: fixed; left: 50%; right: auto; transform: translateX(-50%); bottom: calc(var(--ad-h) + env(safe-area-inset-bottom)); width: min(560px, 100vw); height: calc(var(--ad-h) * 2); max-height: none; border-radius: 14px 14px 0 0; border-bottom: 0; z-index: 61; box-shadow: 0 -6px 18px rgba(0,0,0,.4); }
+.chat-panel.docked .chat-msgs { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
+.chat-panel.docked .chat-list { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
+body.chat-open { padding-bottom: calc(var(--ad-h) * 3 + env(safe-area-inset-bottom)); }
+.game.chat-on .helpers { display: flex; }
+.game.chat-on .helpers .btn { min-height: 38px; padding-top: 4px; padding-bottom: 4px; }
+.chat-panel.docked .chat-end { position: absolute; top: 5px; right: 38px; padding: 0; margin: 0; font-size: 11px; }
+.chat-panel.docked .chat-top { padding: 3px 10px; min-height: 26px; }
+.chat-panel.docked .chat-form { padding: 4px 8px; gap: 6px; }
+.chat-panel.docked .chat-form input { padding: 5px 10px; }
+.chat-panel.docked .chat-send { padding: 5px 14px; }
+.chat-panel.docked .chat-msgs { padding: 4px 8px; }

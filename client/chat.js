@@ -37,15 +37,14 @@
   }
   function markRead(c) { var s = chats[c]; if (s && openPanel && cur === c && s.state.unread) { s.state.unread = 0; post('/api/chat/read', { with: c }).catch(function () {}); render(); } }
 
-  // On the game screen the panel docks right under the Process button and squeezes the panes below it.
+  // The chat is a sticky bar at the bottom, just above the ad and twice its height, so the game stays playable above it.
   function place() {
     if (!box) return;
-    var g = document.querySelector('.screen.game'), any = Object.keys(chats).length > 0, docked = !!g && openPanel && any;
+    var g = document.querySelector('.screen.game'), any = Object.keys(chats).length > 0, open = !!g && openPanel && any;
     document.body.classList.toggle('chat-ingame', !!g);
-    if (g) g.classList.toggle('chat-on', docked);
-    box.classList.toggle('docked', docked);
-    if (docked) { var a = g.querySelector('.actions'); if (a && a.nextSibling !== box) a.parentNode.insertBefore(box, a.nextSibling); }
-    else if (box.parentNode !== document.body) document.body.appendChild(box);
+    if (g) g.classList.toggle('chat-on', open);
+    box.classList.add('docked');
+    if (box.parentNode !== document.body) document.body.appendChild(box);
     return !!g;
   }
   setInterval(function () { if (box && place() !== inGameSeen) { inGameSeen = !inGameSeen; render(); } }, 400);
@@ -57,6 +56,7 @@
     inGameSeen = !!g;
     fab.hidden = !any; fab.textContent = g ? '\uD83D\uDCAC' + (u ? ' ' + u : '') : T('Chat') + (u ? ' (' + u + ')' : ''); fab.classList.toggle('has', u > 0); fab.classList.toggle('side', !!g);
     box.hidden = !openPanel || !any;
+    document.body.classList.toggle('chat-open', !box.hidden);
     if (box.hidden) return;
     var inThread = !!(cur && chats[cur]);
     listEl.hidden = inThread; msgsEl.hidden = !inThread; form.hidden = !inThread || !chats[cur].state.open; endBtn.hidden = !inThread || !chats[cur].state.open;
