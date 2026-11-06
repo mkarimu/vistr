@@ -953,3 +953,28 @@ dialog.reader[open] { display: flex; }
 .paused-card{margin:10px 0;padding:12px 14px;border-radius:14px;background:rgba(255,210,63,.14);border:1px solid rgba(255,210,63,.5)}
 .paused-card p{margin:0 0 8px}
 .paused-row{display:flex;gap:12px;align-items:center}
+
+/* ── Mkarimu Radio: three-dots menu + thin sticky player ── */
+.music-btn { background: none; border: none; padding: 8px 6px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; align-items: center; margin-right: 2px; }
+.music-btn i { width: 4px; height: 4px; border-radius: 50%; background: var(--mute); display: block; }
+.music-btn.on i { background: #8be04e; }
+.radio-pop { position: fixed; left: 8px; top: calc(var(--appbar-h) - 6px); z-index: 70; min-width: 250px; padding: 12px 14px; border-radius: 14px; background: #1d1740; color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.15); }
+.radio-switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; cursor: pointer; position: relative; }
+.radio-switch small { display: block; opacity: .75; }
+.radio-switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.radio-switch i { flex: none; width: 46px; height: 26px; border-radius: 99px; background: #5a5480; position: relative; transition: background .2s; }
+.radio-switch i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.radio-switch input:checked + i { background: #4caf50; }
+.radio-switch input:checked + i::after { transform: translateX(20px); }
+.radio-switch input:focus-visible + i { outline: 2px solid #fff; outline-offset: 2px; }
+.radio-note { margin: 8px 0 0; font-size: 12px; opacity: .7; }
+.radiobar { position: sticky; top: var(--appbar-h); z-index: 39; height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: #1d1740; color: #fff; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.radiobar[hidden] { display: none; }
+.radiobar .grow { flex: 1; }
+.radiobar .rb-dot { width: 8px; height: 8px; border-radius: 50%; background: #8be04e; animation: rbpulse 1.6s infinite; flex: none; }
+@keyframes rbpulse { 50% { opacity: .35; } }
+.radiobar button { background: rgba(255,255,255,.14); color: #fff; border: 0; border-radius: 99px; padding: 0 10px; height: 22px; line-height: 22px; font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; flex: none; }
+.radiobar .rb-x { background: none; font-size: 20px; padding: 0 4px; }
+.radiobar .rb-vol { width: 80px; accent-color: #8be04e; }
+.radiobar .rb-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (prefers-reduced-motion: reduce) { .radiobar .rb-dot { animation: none; } }
