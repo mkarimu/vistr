@@ -978,3 +978,28 @@ dialog.reader[open] { display: flex; }
 .radiobar .rb-vol { width: 80px; accent-color: #8be04e; }
 .radiobar .rb-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (prefers-reduced-motion: reduce) { .radiobar .rb-dot { animation: none; } }
+
+/* Spot What's Missing is not commissioned yet: hidden until memoryq.com says it is public (and while offline) */
+body:not(.yes-missing) a[href="missing/"] { display: none !important; }
+
+/* ── Word length + Intensity as two compact scroll wheels ── */
+.pickers { display: grid; grid-template-columns: 0.9fr 1.3fr; gap: 10px; margin: 6px 0 4px; }
+.pk-t { display: block; font-size: 0.8rem; color: var(--mute); margin: 0 0 4px 4px; }
+.wheel { display: flex; align-items: stretch; background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.14); border-radius: 16px; overflow: hidden; }
+.wh-list { flex: 1; height: 56px; overflow-y: auto; scroll-snap-type: y mandatory; scrollbar-width: none; overscroll-behavior: contain; outline-offset: -3px; }
+.wh-list::-webkit-scrollbar { display: none; }
+.wh-item { height: 56px; scroll-snap-align: start; scroll-snap-stop: always; display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.wh-item b { font-size: 1.7rem; line-height: 1; }
+.wh-item span { font-size: 0.9rem; color: var(--mute); }
+.wh-item i { font-style: normal; color: var(--sunshine); letter-spacing: 1px; font-size: 0.9rem; }
+.wh-item[data-c="i"] b { font-size: 1.05rem; font-weight: 600; }
+.wh-item[data-c="4"] b { color: var(--sunshine); } .wh-item[data-c="5"] b { color: var(--bubblegum); } .wh-item[data-c="6"] b { color: var(--sky); } .wh-item[data-c="7"] b { color: var(--lime); }
+.wh-btns { display: flex; flex-direction: column; width: 36px; border-left: 1px solid rgba(255,255,255,0.14); }
+.wh-btns button { flex: 1; background: none; border: 0; color: var(--mute); font-size: 0.8rem; cursor: pointer; padding: 0; }
+.wh-btns button:active { background: rgba(255,255,255,0.12); }
+/* the top bar must keep its menu button on narrow phones */
+.appbar-in { gap: 6px; }
+.appbar-in > * { min-width: 0; }
+.appbar .menu-btn, .appbar .music-btn { flex: none; }
+.appbar .net-pill { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; }
+.appbar .you { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }

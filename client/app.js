@@ -726,8 +726,9 @@
 
   function showHome() {
     mount('home', 'home');
+    let wLen = null, wInt = null;   // the two scroll pickers (they drive the hidden buttons below)
     const pickIntensity = name => {
-      S.intensity = name; saved('vistr.intensity', name);
+      S.intensity = name; saved('vistr.intensity', name); if (wInt) wInt.set(name);
       $$('[data-intensity]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.intensity === name)));
       $('[data-intensity-about]').textContent = t(E.INTENSITY[name].about);
       loadBoards($('[data-boards]'), S.level);
@@ -735,13 +736,28 @@
     };
     $$('[data-intensity]').forEach(b => { b.onclick = () => pickIntensity(b.dataset.intensity); });
     const pick = L => {
-      S.level = L; saved('vistr.level', L);
+      S.level = L; saved('vistr.level', L); if (wLen) wLen.set(L);
       $$('.level').forEach(b => b.setAttribute('aria-checked', String(Number(b.dataset.level) === L)));
       loadBoards($('[data-boards]'), L);
     };
     $$('.level').forEach(b => { b.onclick = () => { pick(Number(b.dataset.level)); renderPlayers(); }; });
     pick(S.level);
     pickIntensity(S.intensity);
+    // Word length and Intensity as two small scroll wheels (swipe, or tap the arrows)
+    const wheel = (box, items, choose) => {
+      box.innerHTML = '<div class="wh-list" tabindex="0" role="listbox"></div><div class="wh-btns"><button type="button" class="wh-up" aria-label="Previous">\u25B2</button><button type="button" class="wh-dn" aria-label="Next">\u25BC</button></div>';
+      const list = $('.wh-list', box); let idx = 0, lock = false, tm = 0;
+      items.forEach(it => { const d = document.createElement('div'); d.className = 'wh-item'; d.dataset.c = it.c || ''; d.innerHTML = it.html; list.appendChild(d); });
+      const go = (i, smooth) => { idx = Math.max(0, Math.min(items.length - 1, i)); lock = true; list.scrollTo({ top: idx * (list.clientHeight || 56), behavior: smooth ? 'smooth' : 'auto' }); clearTimeout(tm); tm = setTimeout(() => { lock = false; }, 400); };
+      list.addEventListener('scroll', () => { if (lock) return; clearTimeout(tm); tm = setTimeout(() => { const i = Math.round(list.scrollTop / (list.clientHeight || 56)); if (i !== idx && items[i]) { idx = i; choose(items[i].value); } }, 120); });
+      const step = d => { go(idx + d, true); choose(items[idx].value); };
+      $('.wh-up', box).onclick = () => step(-1); $('.wh-dn', box).onclick = () => step(1);
+      list.addEventListener('keydown', e => { if (e.key === 'ArrowUp') { e.preventDefault(); step(-1); } if (e.key === 'ArrowDown') { e.preventDefault(); step(1); } });
+      return { set(v) { const i = items.findIndex(x => x.value === v); if (i >= 0) go(i, false); } };
+    };
+    wLen = wheel($('[data-wheel=len]'), [4, 5, 6, 7].map(n => ({ value: n, c: n, html: `<b>${n}</b> <span>${t('letters')}</span>` })), v => $(`.level[data-level="${v}"]`).click());
+    wInt = wheel($('[data-wheel=int]'), [['learner', '\u2605', 'Learner'], ['intermediate', '\u2605\u2605', 'Intermediate'], ['advanced', '\u2605\u2605\u2605', 'Advanced']].map(([v, s, n]) => ({ value: v, c: 'i', html: `<i>${s}</i> <b>${t(n)}</b>` })), v => $(`[data-intensity="${v}"]`).click());
+    wLen.set(S.level); wInt.set(S.intensity);
     Plays.show();
     Weekly.show();
     Daily.show();
@@ -1956,7 +1972,7 @@
   async function checkGames() {
     try {
       const d = await fetch(`${window.VISTR_MEMORYQ || 'https://memoryq.com'}/api/games`, { cache: 'no-store' }).then(r => r.json());
-      (d.games || []).forEach(g => document.body.classList.toggle('no-' + g.key, g.public === false));
+      (d.games || []).forEach(g => { document.body.classList.toggle('no-' + g.key, g.public === false); document.body.classList.toggle('yes-' + g.key, g.public === true); });
     } catch (_) { /* offline: as it was */ }
   }
 

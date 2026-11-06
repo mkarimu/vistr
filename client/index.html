@@ -118,21 +118,23 @@
     <section class="screen">
       <a class="games-card" href="kids/" data-web-only data-kids-card><span class="gc-ic" aria-hidden="true">&#129489;</span><span class="gc-tx"><b>Kids mode</b><small>3-letter words, big buttons, no timer</small></span><span class="gc-go" aria-hidden="true">&#8250;</span></a>
       <a class="games-card" href="missing/" data-games-card><span class="gc-ic" aria-hidden="true">&#128269;</span><span class="gc-tx"><b>Spot What's Missing</b><small>New: a calm picture game - find what's missing</small></span><span class="gc-go" aria-hidden="true">&#8250;</span></a>
-      <h2>Word length</h2>
-      <div class="levels" role="radiogroup" aria-label="Word length">
+      <div class="pickers" data-pickers>
+        <div class="pk"><span class="pk-t">Word length</span><div class="wheel" data-wheel="len"></div></div>
+        <div class="pk"><span class="pk-t">Intensity</span><div class="wheel" data-wheel="int"></div></div>
+      </div>
+      <p class="hint intensity-about" data-intensity-about></p>
+      <div class="levels" role="radiogroup" aria-label="Word length" hidden>
         <button class="level" role="radio" data-level="4"><b>4</b><span>letters</span></button>
         <button class="level" role="radio" data-level="5"><b>5</b><span>letters</span></button>
         <button class="level" role="radio" data-level="6"><b>6</b><span>letters</span></button>
         <button class="level" role="radio" data-level="7"><b>7</b><span>letters</span></button>
       </div>
 
-      <h2>Intensity</h2>
-      <div class="intensity" role="radiogroup" aria-label="Intensity">
+      <div class="intensity" role="radiogroup" aria-label="Intensity" hidden>
         <button type="button" role="radio" data-intensity="learner"><span class="stars" aria-hidden="true">★</span><b>Learner</b></button>
         <button type="button" role="radio" data-intensity="intermediate"><span class="stars" aria-hidden="true">★★</span><b>Intermediate</b></button>
         <button type="button" role="radio" data-intensity="advanced"><span class="stars" aria-hidden="true">★★★</span><b>Advanced</b></button>
       </div>
-      <p class="hint intensity-about" data-intensity-about></p>
 
       <button class="btn primary big" type="button" data-action="solo">Play solo</button>
       <section class="paused-card" data-paused hidden><p data-paused-text></p><div class="paused-row"><button class="btn primary" type="button" data-action="resume">Resume</button> <button class="link" type="button" data-action="discard-paused">Discard</button></div></section>
