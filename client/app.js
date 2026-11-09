@@ -804,7 +804,7 @@
       guard(async () => {
         const r = await api('POST', '/api/account/delete', { code: df.code.value.trim() });
         forgetPlayer();
-        toast(t('Player ID {p} and everything saved with it have been deleted.', { p: r.deleted }));
+        toast(t('Player ID {p} is set aside to be removed. An admin deletes it for good; sign in again before then to keep it.', { p: r.deleted }));
       });
     };
 

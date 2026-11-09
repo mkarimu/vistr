@@ -494,6 +494,7 @@ function serveAdImage(res, url) {
 const revoked = new Map();   // token -> when: lets a signed-out device be told "you signed in elsewhere" instead of a plain 401
 function tokenOf(req, url) { const h = req.headers.authorization || ''; return h.startsWith('Bearer ') ? h.slice(7) : url.searchParams.get('token'); }
 function startSession(player, ttlMs) {
+  store.cancelDeletion(player.id);   // signing in again before an admin deletes the account keeps it
   const token = store.createSession(player.id, ttlMs);
   for (const old of store.revokeOtherSessions(player.id, token)) revoked.set(old, Date.now());
   if (revoked.size > 2000) for (const [k, t] of revoked) if (Date.now() - t > 7 * 24 * 3600_000) revoked.delete(k);
@@ -674,10 +675,10 @@ const routes = {
     for (const s of streams.get(me.id) || []) s.end();
     streams.delete(me.id); playerLang.delete(me.id);
     clearTimeout(visits.get(me.id)?.closeTimer); visits.delete(me.id);
-    const code = store.deletePlayer(me.id);
+    const code = store.requestDeletion(me.id);
     broadcastPlayers();
-    console.log(`Player ${code} deleted their ID.`);
-    send(res, 200, { ok: true, deleted: code });
+    console.log(`Player ${code} asked to be removed: waiting for an admin to delete it.`);
+    send(res, 200, { ok: true, pending: true, deleted: code });
   },
   // The player's own name (optional; only they and the admin page see it).
   'POST /api/me/name': async (req, res, { me, body }) => send(res, 200, { name: store.setName(me.id, body.name) }),
@@ -745,7 +746,7 @@ const routes = {
     console.log(`[admin] player ${p.code} ${on ? 'paused' : 'can play again'}`);
     send(res, 200, { player: { code: p.code, paused: on } });
   },
-  // memoryq.com deletes a player (its scores go; the number is never used again).
+  // memoryq.com deletes a player for good (its scores go; the number goes back into the pool).
   'POST /api/admin/player/delete': async (req, res, { url, body }) => {
     if (!adminOk(url)) return send(res, 403, { error: 'Wrong admin key.' });
     const p = store.findPlayerByCode(String(body.code || '').replace(/\D/g, ''));

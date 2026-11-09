@@ -96,8 +96,9 @@ function findPlayerByCode(code) {
 function getPlayer(id) { return db.players[id] || null; }
 
 function nextCode() {
-  // IDs of deleted players are never handed out again, so an ID always means one person.
-  const used = new Set([...Object.values(db.players).map(p => p.code), ...((db.stats || {}).retired || [])]);
+  // The lowest free number: while a player's email/account exists their ID stays theirs; once an admin deletes
+  // the account for good, the number goes back into the pool and a gap is filled first.
+  const used = new Set(Object.values(db.players).map(p => p.code));
   for (let n = FIRST_ID; n <= LAST_ID; n++) if (!used.has(String(n))) return String(n);
   throw new Error('All player IDs (10–9999) are taken.');
 }
@@ -139,13 +140,12 @@ function findPlayerByMq(username) {
   const u = String(username || '').toLowerCase();
   return u ? Object.values(db.players).find(p => (p.mq || '').toLowerCase() === u) || null : null;
 }
-// The Memoryq super-admin changes a Player ID: 2-4 digits, not used by anyone, never a deleted player's number.
+// The Memoryq super-admin changes a Player ID: 2-4 digits, not used by anyone, and free numbers are used lowest first.
 function setCode(id, code) {
   const p = db.players[id]; if (!p) return { error: 'No such player.' };
   code = String(code || '').replace(/\D/g, '');
   if (!/^\d{2,4}$/.test(code)) return { error: 'A Player ID is 2 to 4 digits.' };
   if (Object.values(db.players).some(x => x.id !== id && x.code === code)) return { error: `Player ID ${code} belongs to another player.` };
-  if (((db.stats || {}).retired || []).includes(code)) return { error: `Player ID ${code} belonged to a deleted player and is not used again.` };
   p.code = code; save('players');
   return {};
 }
@@ -375,7 +375,7 @@ function ratingBoard(limit = 10) {
 // For the admin page: everyone, with their record and email.
 function allPlayers() {
   return Object.values(db.players).map(p => ({ ...recordView(p.id), email: p.email, name: p.name || '', mq: p.mq || '', lastIp: p.lastIp || '',
-    lastSeen: p.lastSeen || null, onlineMs: onlineTime(p.id), paused: !!p.paused })).sort((a, b) => b.rating - a.rating || b.points - a.points);
+    lastSeen: p.lastSeen || null, onlineMs: onlineTime(p.id), paused: !!p.paused, deleteRequested: p.deleteRequested || null })).sort((a, b) => b.rating - a.rating || b.points - a.points);
 }
 // Players from before records existed: start their record from the games still saved.
 function seedCareers() {
@@ -433,8 +433,18 @@ function setName(id, name) {
 }
 function noteSignIn(id, ip) { const p = db.players[id]; if (p) { p.lastIp = ip || p.lastIp; p.lastSignIn = Date.now(); save('players'); } }
 
-// The player asked for their ID to be removed: everything about them goes, and the
-// number is retired. Returns the code that was deleted.
+// The player asked to be removed (Delete my Player ID): nothing is deleted yet. The account is set aside,
+// signed out everywhere, and waits for an admin to delete it for good. Signing in again cancels the request.
+function requestDeletion(id) {
+  const p = db.players[id]; if (!p) return null;
+  p.deleteRequested = Date.now();
+  for (const [tok, s] of Object.entries(db.sessions)) if (s.playerId === id) delete db.sessions[tok];
+  save('players'); save('sessions');
+  return p.code;
+}
+function cancelDeletion(id) { const p = db.players[id]; if (p && p.deleteRequested) { delete p.deleteRequested; save('players'); return true; } return false; }
+// Permanent deletion (admin): everything about the player goes and the number goes back to the pool.
+// Returns the code that was deleted.
 function deletePlayer(id) {
   const p = db.players[id]; if (!p) return null;
   delete db.players[id];
@@ -442,7 +452,6 @@ function deletePlayer(id) {
   db.results = db.results.filter(r => r.playerId !== id);
   db.activity = (db.activity || []).filter(v => v.playerId !== id);
   if (db.reviews) delete db.reviews[id];
-  const st = (db.stats = db.stats || {}); st.retired = [...new Set([...(st.retired || []), p.code])];
   ['players', 'sessions', 'results', 'reviews', 'stats', 'activity'].forEach(save);
   return p.code;
 }
@@ -472,6 +481,6 @@ module.exports = {
   ready, flushRemote, remote: !!REMOTE,
   countAd, adStats, isAvailable, setAvailable,
   findPlayerByEmail, findPlayerByCode, findPlayerByName, getPlayer, createPlayer,
-  createSession, revokeOtherSessions, playerForToken, deleteSession, addResult, topTen, levelBoard,
+  createSession, revokeOtherSessions, requestDeletion, cancelDeletion, playerForToken, deleteSession, addResult, topTen, levelBoard,
   findPlayerByMq, linkMq, createAdminSession, adminSessionOk, setCode, setPaused,
 };
