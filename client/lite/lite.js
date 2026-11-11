@@ -259,6 +259,7 @@
   function scheduleResults() { clearTimeout(resultsT); resultsT = setTimeout(showResults, 1800); }
   function showResults() {
     if (!G || G.status !== 'over') return;
+    try { window.LiteTrack && window.LiteTrack.play(); } catch (e) { /* counting never blocks a game */ }
     const res = G.result, u = G.units;
     let title, note;
     if (u.length === 1) {

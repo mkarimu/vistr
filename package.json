@@ -7,7 +7,7 @@
   "engines": { "node": ">=18" },
   "scripts": {
     "start": "node server/server.js",
-    "test": "node test/missing.test.js && node test/report.test.js && node test/lite.test.js && node test/draft.test.js && node test/devices.test.js && node test/weekly.test.js && node test/daily.test.js && node test/pause.test.js && node test/names.test.js && node test/ids.test.js",
+    "test": "node test/missing.test.js && node test/report.test.js && node test/lite.test.js && node test/draft.test.js && node test/devices.test.js && node test/weekly.test.js && node test/daily.test.js && node test/pause.test.js && node test/names.test.js && node test/ids.test.js && node test/guests.test.js",
     "build-dictionary": "python3 tools/build_dictionary.py /usr/share/hunspell/en_US.dic /usr/share/hunspell/en_US.aff client/words"
   }
 }

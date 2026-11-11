@@ -510,7 +510,7 @@ const realEmail = e => !!e && !/@(users|bots)\.memoryq\.com$/i.test(e);
 
 const weekly = weeklyMod.create({ store, push, adminOk, send });   // Weekly Champions: top three each week get credits
 const daily = dailyMod.create({ store, push, adminOk, send });   // Daily Challenge: start word to target word
-store.ready.then(() => { weekly.closeDue(); daily.closeDue(); }); setInterval(() => daily.closeDue(), 10 * 60_000).unref();
+store.ready.then(() => { weekly.closeDue(); daily.closeDue(); store.pruneGuests(); }); setInterval(() => store.pruneGuests(), 24 * 3600_000).unref(); setInterval(() => daily.closeDue(), 10 * 60_000).unref();
 store.ready.then(() => weekly.closeDue()); setInterval(() => weekly.closeDue(), 10 * 60_000).unref();   // pay a finished week once
 const chat = chatMod.create({ push, store, send });   // player-to-player chat, opened when an invite is accepted
 const routes = {
@@ -529,6 +529,26 @@ const routes = {
     if (overLimit('played', clientIp(req), 30, 60 * 60_000)) return send(res, 429, { error: 'Too many reports.' });
     store.countGames('offline', n);
     send(res, 200, { ok: true, total: store.gameStats().total });
+  },
+  // Guests: "Play without an ID" (app) and anonymous Lite visitors. The server makes an L-ID; nothing personal is kept.
+  'POST /api/guest/new': async (req, res, { body }) => {
+    if (overLimit('guestnew', clientIp(req), 6, 24 * 3600_000)) return send(res, 429, { error: 'Too many new guest IDs from here today. Try again tomorrow.' });
+    send(res, 200, store.newGuest(body.src));
+  },
+  'POST /api/guest/ping': async (req, res, { url, body }) => {
+    if (overLimit('guestping', clientIp(req), 200, 60 * 60_000)) return send(res, 429, { error: 'Too many reports.' });
+    const kind = body.kind === 'play' ? 'play' : 'open', src = body.src === 'lite' ? 'lite' : 'app';
+    const player = store.playerForToken(tokenOf(req, url));   // signed in on this browser: count it on the Vistr ID
+    if (player && src === 'lite') { store.playerLitePing(player.id, { kind, n: body.n }); return send(res, 200, { ok: true, as: player.code }); }
+    const g = store.guestPing(String(body.guest || ''), { kind, n: body.n, src });
+    if (!g) return send(res, 404, { error: 'Unknown guest ID.' });
+    send(res, 200, { ok: true, as: g.code });
+  },
+  // A guest who signs in or makes a Vistr ID: link the L-ID to it.
+  'POST /api/guest/claim': async (req, res, { me, body }) => send(res, 200, { ok: store.claimGuest(me.id, String(body.guest || '')) }),
+  'GET /api/admin/guests': async (req, res, { url }) => {
+    if (!adminOk(url)) return send(res, 403, { error: 'Wrong admin key.' });
+    send(res, 200, store.guestList());
   },
   // Contact form. Works signed in or not; signed-in players' ID is added.
   'POST /api/contact': async (req, res, { me, body }) => {
@@ -968,7 +988,7 @@ const routes = {
     send(res, 200, { level, intensity, lang, topTen: store.topTen(me.id, level, intensity, lang), board: store.levelBoard(level, intensity, lang) });
   },
 };
-const PUBLIC = new Set(['GET /api/admin/activity', 'GET /api/admin/report', 'GET /api/admin/players', 'GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'POST /api/auth/memoryq', 'POST /api/admin/player', 'POST /api/admin/player/assign', 'POST /api/admin/player/pause', 'POST /api/admin/player/delete', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
+const PUBLIC = new Set(['GET /api/admin/activity', 'GET /api/admin/report', 'GET /api/admin/players', 'GET /api/admin/guests', 'POST /api/guest/new', 'POST /api/guest/ping', 'GET /api/stats', 'POST /api/played', 'POST /api/contact', 'GET /api/contact/messages', 'GET /api/reviews', 'GET /api/reviews/all', 'GET /api/health', 'POST /api/auth/register', 'POST /api/auth/id', 'POST /api/auth/memoryq', 'POST /api/admin/player', 'POST /api/admin/player/assign', 'POST /api/admin/player/pause', 'POST /api/admin/player/delete', 'GET /api/ads', 'POST /api/ads/event', 'GET /api/ads/stats']);
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);

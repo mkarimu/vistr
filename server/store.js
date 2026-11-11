@@ -8,12 +8,12 @@ const path = require('path');
 
 const FILE = process.env.VISTR_DB || path.join(__dirname, 'data', 'db.json');
 
-let db = { players: {}, sessions: {}, results: [], adStats: {}, messages: [], reviews: {}, stats: {}, activity: [] };
+let db = { players: {}, sessions: {}, results: [], adStats: {}, messages: [], reviews: {}, stats: {}, activity: [], guests: {} };
 try {
   db = { ...db, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) };
 } catch (_) { /* first run */ }
 
-const PARTS = ['players', 'sessions', 'results', 'adStats', 'messages', 'reviews', 'stats', 'activity'];
+const PARTS = ['players', 'sessions', 'results', 'adStats', 'messages', 'reviews', 'stats', 'activity', 'guests'];
 let timer = null;
 function save(part) {
   if (REMOTE) { if (part) dirty.add(part); else PARTS.forEach(x => dirty.add(x)); scheduleRemote(); }
@@ -468,6 +468,60 @@ function weeklyRows() {
 function todayGames(id) { const c = careerOf(id); const dd = c && c.daily && c.daily[require('./weekly').dayKey(Date.now())]; return dd ? dd.g : 0; }
 function getStats() { db.stats = db.stats || {}; return db.stats; }
 function saveStats() { save('stats'); }
+
+// ── Guests: "Play without an ID" in the app, and anonymous visitors of Vistr Lite ──
+// An L-ID (L-4821) is made by the server and kept on the device with a secret token. No password, no email,
+// no IP address kept. It is only a way to count who uses what; it never takes a Player ID number from the pool.
+const GUEST_IDLE_MS = 90 * 24 * 3600_000;
+function newGuest(src) {
+  db.guests = db.guests || {};
+  const taken = new Set(Object.values(db.guests).map(g => g.code));
+  let code, digits = 4;
+  for (let tries = 0; ; tries++) {
+    if (tries > 30) digits++;
+    code = 'L-' + String(Math.floor(Math.random() * 10 ** digits)).padStart(digits, '0');
+    if (!taken.has(code)) break;
+  }
+  const token = 'g_' + require('crypto').randomBytes(18).toString('hex');
+  const now = Date.now();
+  db.guests[token] = { code, createdAt: now, lastSeen: now, opens: 0, games: 0, app: 0, lite: 0, src: src === 'lite' ? 'lite' : 'app' };
+  save('guests');
+  return { code, token };
+}
+function guestByToken(token) { return token && db.guests ? db.guests[token] || null : null; }
+// kind: 'open' (page or app opened) or 'play' (n finished games)
+function guestPing(token, { kind, n, src }) {
+  const g = guestByToken(token); if (!g) return null;
+  g.lastSeen = Date.now();
+  const where = src === 'lite' ? 'lite' : 'app';
+  if (kind === 'play') { const k = Math.max(1, Math.min(50, Math.floor(Number(n)) || 1)); g.games += k; g[where] += k; } else g.opens += 1;
+  save('guests'); return g;
+}
+// A signed-in player using Lite is counted on the player (no L-ID needed).
+function playerLitePing(id, { kind, n }) {
+  const p = db.players[id]; if (!p) return;
+  const l = (p.lite = p.lite || { first: Date.now(), opens: 0, games: 0 });
+  l.last = Date.now();
+  if (kind === 'play') l.games += Math.max(1, Math.min(50, Math.floor(Number(n)) || 1)); else l.opens += 1;
+  save('players');
+}
+// A guest who then signs in or makes a Vistr ID is linked to it (the L-ID stays in the list, marked as linked).
+function claimGuest(playerId, token) {
+  const g = guestByToken(token), p = db.players[playerId]; if (!g || !p) return false;
+  g.linkedTo = p.code; g.linkedAt = Date.now(); save('guests'); return true;
+}
+function pruneGuests() {
+  let n = 0;
+  for (const [tok, g] of Object.entries(db.guests || {})) if (!g.linkedTo && Date.now() - (g.lastSeen || 0) > GUEST_IDLE_MS) { delete db.guests[tok]; n++; }
+  if (n) save('guests'); return n;
+}
+function guestList() {
+  const guests = Object.values(db.guests || {}).map(g => ({ code: g.code, from: g.src, firstSeen: g.createdAt, lastSeen: g.lastSeen, opens: g.opens, games: g.games, inApp: g.app, inLite: g.lite, linkedTo: g.linkedTo || '' }))
+    .sort((a, b) => b.lastSeen - a.lastSeen);
+  const liteUsers = Object.values(db.players).filter(p => p.lite).map(p => ({ code: p.code, name: p.name || '', firstSeen: p.lite.first, lastSeen: p.lite.last, opens: p.lite.opens, games: p.lite.games }))
+    .sort((a, b) => b.lastSeen - a.lastSeen);
+  return { guests, liteUsers };
+}
 function addCredits(id, n) { const p = db.players[id]; if (!p) return 0; p.credits = (p.credits || 0) + n; save('players'); return p.credits; }
 function getCredits(id) { return (db.players[id] || {}).credits || 0; }
 function creditList() { return Object.values(db.players).filter(p => p.credits).map(p => ({ code: p.code, name: p.name || '', email: p.email, credits: p.credits })).sort((a, b) => b.credits - a.credits); }
@@ -481,6 +535,6 @@ module.exports = {
   ready, flushRemote, remote: !!REMOTE,
   countAd, adStats, isAvailable, setAvailable,
   findPlayerByEmail, findPlayerByCode, findPlayerByName, getPlayer, createPlayer,
-  createSession, revokeOtherSessions, requestDeletion, cancelDeletion, playerForToken, deleteSession, addResult, topTen, levelBoard,
+  createSession, revokeOtherSessions, requestDeletion, cancelDeletion, newGuest, guestPing, playerLitePing, claimGuest, pruneGuests, guestList, playerForToken, deleteSession, addResult, topTen, levelBoard,
   findPlayerByMq, linkMq, createAdminSession, adminSessionOk, setCode, setPaused,
 };
