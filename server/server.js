@@ -533,7 +533,14 @@ const routes = {
   // Guests: "Play without an ID" (app) and anonymous Lite visitors. The server makes an L-ID; nothing personal is kept.
   'POST /api/guest/new': async (req, res, { body }) => {
     if (overLimit('guestnew', clientIp(req), 6, 24 * 3600_000)) return send(res, 429, { error: 'Too many new guest IDs from here today. Try again tomorrow.' });
-    send(res, 200, store.newGuest(body.src));
+    // Lite asks "who is playing?": a typed Vistr ID is checked to exist (not to be theirs), kept as "typed" in the list.
+    let claimed = '';
+    if (body.playerCode) {
+      const pl = store.findPlayerByCode(String(body.playerCode).replace(/\D/g, ''));
+      if (!pl) return send(res, 404, { error: 'No Vistr player has that ID. Check the number, or let this browser get its own ID.' });
+      claimed = pl.code;
+    }
+    send(res, 200, store.newGuest(body.src, claimed));
   },
   'POST /api/guest/ping': async (req, res, { url, body }) => {
     if (overLimit('guestping', clientIp(req), 200, 60 * 60_000)) return send(res, 429, { error: 'Too many reports.' });

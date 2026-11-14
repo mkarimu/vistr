@@ -125,3 +125,18 @@ body:not(.classroom) .play.multi .strip { display: flex; gap: 6px; padding: 8px 
 .chip { display: flex; align-items: center; gap: 8px; background: var(--c); color: var(--ink); font-weight: 800; border-radius: 12px; padding: 4px 10px; } .chip b { background: var(--cream); border-radius: 8px; padding: 0 8px; } .chip.on { box-shadow: 0 0 0 3px var(--cream); }
 body:not(.classroom) .bottom { padding: 14px 0 8px; }
 body:not(.classroom) .blk.turn .nm { display: none; } body:not(.classroom) .blk.turn { justify-content: center; }
+
+/* "Who is playing?" - the game behind it is blurred until the person chooses */
+#lt-gate { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(20, 24, 33, .45); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+#lt-gate .lt-card { width: min(380px, 100%); background: #fff; color: #1b2230; border-radius: 16px; padding: 20px 18px; text-align: center; box-shadow: 0 10px 40px rgba(0, 0, 0, .3); }
+#lt-gate h2 { margin: 0 0 6px; font-size: 22px; }
+#lt-gate p { margin: 0 0 12px; font-size: 14px; line-height: 1.4; }
+#lt-gate form { display: flex; flex-direction: column; gap: 8px; }
+#lt-gate input { background: #fff; color: #1b2230; font: inherit; font-size: 18px; text-align: center; padding: 10px; border: 2px solid #c9d1e0; border-radius: 10px; }
+#lt-gate .lt-btn { font: inherit; font-weight: 700; padding: 11px 14px; border: 0; border-radius: 10px; background: #2f6bff; color: #fff; cursor: pointer; width: 100%; }
+#lt-gate .lt-btn.lt-alt { background: #eef2fb; color: #1b2230; border: 2px solid #c9d1e0; }
+#lt-gate .lt-btn:disabled { opacity: .6; }
+#lt-gate .lt-or { margin: 10px 0; color: #667; font-size: 13px; }
+#lt-gate .lt-err { color: #b3261e; min-height: 1.2em; margin: 10px 0 0; }
+#lt-gate .lt-link { background: none; border: 0; color: #2f6bff; text-decoration: underline; cursor: pointer; font: inherit; font-size: 13px; }

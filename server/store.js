@@ -473,7 +473,7 @@ function saveStats() { save('stats'); }
 // An L-ID (L-4821) is made by the server and kept on the device with a secret token. No password, no email,
 // no IP address kept. It is only a way to count who uses what; it never takes a Player ID number from the pool.
 const GUEST_IDLE_MS = 90 * 24 * 3600_000;
-function newGuest(src) {
+function newGuest(src, claimedCode) {
   db.guests = db.guests || {};
   const taken = new Set(Object.values(db.guests).map(g => g.code));
   let code, digits = 4;
@@ -484,7 +484,7 @@ function newGuest(src) {
   }
   const token = 'g_' + require('crypto').randomBytes(18).toString('hex');
   const now = Date.now();
-  db.guests[token] = { code, createdAt: now, lastSeen: now, opens: 0, games: 0, app: 0, lite: 0, src: src === 'lite' ? 'lite' : 'app' };
+  db.guests[token] = { code, createdAt: now, lastSeen: now, opens: 0, games: 0, app: 0, lite: 0, src: src === 'lite' ? 'lite' : 'app', ...(claimedCode ? { claimedCode } : {}) };
   save('guests');
   return { code, token };
 }
@@ -516,7 +516,7 @@ function pruneGuests() {
   if (n) save('guests'); return n;
 }
 function guestList() {
-  const guests = Object.values(db.guests || {}).map(g => ({ code: g.code, from: g.src, firstSeen: g.createdAt, lastSeen: g.lastSeen, opens: g.opens, games: g.games, inApp: g.app, inLite: g.lite, linkedTo: g.linkedTo || '' }))
+  const guests = Object.values(db.guests || {}).map(g => ({ code: g.code, from: g.src, firstSeen: g.createdAt, lastSeen: g.lastSeen, opens: g.opens, games: g.games, inApp: g.app, inLite: g.lite, linkedTo: g.linkedTo || '', claimedCode: g.claimedCode || '' }))
     .sort((a, b) => b.lastSeen - a.lastSeen);
   const liteUsers = Object.values(db.players).filter(p => p.lite).map(p => ({ code: p.code, name: p.name || '', firstSeen: p.lite.first, lastSeen: p.lite.last, opens: p.lite.opens, games: p.lite.games }))
     .sort((a, b) => b.lastSeen - a.lastSeen);

@@ -1,22 +1,8 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vistr guests</title><meta name="robots" content="noindex">
-<style>body{font:14px system-ui,sans-serif;margin:16px;max-width:900px}table{border-collapse:collapse;width:100%;margin:8px 0 24px}th,td{border-bottom:1px solid #ccc;padding:5px 8px;text-align:left}th{background:#f3f3f3}input{padding:6px}button{padding:6px 12px}</style></head>
-<body><h1>Vistr guests and Lite users</h1>
-<p><input id="key" type="password" placeholder="Admin key"> <button id="go">Show</button> <span id="msg"></span></p>
-<h2>Guest IDs (Play without an ID, Lite visitors)</h2><div id="g"></div>
-<h2>Vistr players who used Lite</h2><div id="p"></div>
-<script>
-const fmt = t => t ? new Date(t).toLocaleString() : '';
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function table(rows, cols) { return rows.length ? '<table><tr>' + cols.map(c => '<th>' + c[0] + '</th>').join('') + '</tr>' + rows.map(r => '<tr>' + cols.map(c => '<td>' + esc(c[1](r)) + '</td>').join('') + '</tr>').join('') + '</table>' : '<p>None yet.</p>'; }
-async function load() {
-  const k = document.getElementById('key').value.trim(); if (!k) return;
-  const r = await fetch('/api/admin/guests?key=' + encodeURIComponent(k)); const d = await r.json().catch(() => ({}));
-  if (!r.ok) { document.getElementById('msg').textContent = d.error || 'Failed'; return; }
-  document.getElementById('msg').textContent = d.guests.length + ' guests';
-  document.getElementById('g').innerHTML = table(d.guests, [['ID', r => r.code], ['From', r => r.from], ['First seen', r => fmt(r.firstSeen)], ['Last seen', r => fmt(r.lastSeen)], ['Opens', r => r.opens], ['Games', r => r.games], ['In app', r => r.inApp], ['In Lite', r => r.inLite], ['Linked to Vistr ID', r => r.linkedTo]]);
-  document.getElementById('p').innerHTML = table(d.liteUsers, [['Vistr ID', r => r.code], ['Name', r => r.name], ['First seen', r => fmt(r.firstSeen)], ['Last seen', r => fmt(r.lastSeen)], ['Opens', r => r.opens], ['Games', r => r.games]]);
-}
-document.getElementById('go').onclick = load;
-</script></body></html>
+<title>Vistr visitors - now on memoryq.com</title><meta name="robots" content="noindex">
+<meta http-equiv="refresh" content="2; url=https://memoryq.com/admin#games/vistr">
+<style>body{font:16px system-ui,sans-serif;margin:24px;max-width:560px}</style></head>
+<body><h1>The visitor list has moved</h1>
+<p>Lite and guest visitors are now in <b>Admin &rarr; Games &rarr; Vistr</b> on memoryq.com.</p>
+<p><a href="https://memoryq.com/admin#games/vistr">Open memoryq.com/admin</a></p></body></html>
