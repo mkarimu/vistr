@@ -363,7 +363,7 @@ function finishMatch(m, reason) {
     const moved = ids.some(pid => m.players[pid].chain.length > 0);
     if (moved) records = store.recordGame({
       level: m.level, intensity: m.intensity, lang: m.lang, mode: m.mode,
-      players: ids.map(pid => ({ id: pid, score: m.players[pid].score, words: m.players[pid].chain.filter(c => c.valid).length })),
+      players: ids.map(pid => ({ id: pid, plat: (visits.get(pid)?.entry.app === 'Android app' ? 'app' : 'web'), score: m.players[pid].score, words: m.players[pid].chain.filter(c => c.valid).length })),
       rated: reason !== 'switched', fullRound: reason === 'time',
     });
     store.countGames(m.mode === 'duo' ? 'duo' : 'solo');
@@ -794,7 +794,8 @@ const routes = {
     const day = /^\d{4}-\d{2}-\d{2}$/;
     const from = url.searchParams.get('from') || '', to = url.searchParams.get('to') || '';
     if (!day.test(from) || !day.test(to) || from > to) return send(res, 400, { error: 'from and to must be dates (YYYY-MM-DD), from first.' });
-    send(res, 200, { from, to, players: store.playReport(from, to) });
+    const r = store.playReport(from, to, url.searchParams.get('tz') || undefined);
+    send(res, 200, { from, to, tz: r.tz, logFrom: r.logFrom, today: r.today, players: r.players });
   },
   'GET /api/admin/players': async (req, res, { url }) => {
     if (!adminOk(url)) return send(res, 403, { error: 'Wrong admin key.' });

@@ -8,12 +8,12 @@ const path = require('path');
 
 const FILE = process.env.VISTR_DB || path.join(__dirname, 'data', 'db.json');
 
-let db = { players: {}, sessions: {}, results: [], adStats: {}, messages: [], reviews: {}, stats: {}, activity: [], guests: {} };
+let db = { players: {}, sessions: {}, results: [], adStats: {}, messages: [], reviews: {}, stats: {}, activity: [], guests: {}, plays: [] };
 try {
   db = { ...db, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) };
 } catch (_) { /* first run */ }
 
-const PARTS = ['players', 'sessions', 'results', 'adStats', 'messages', 'reviews', 'stats', 'activity', 'guests'];
+const PARTS = ['players', 'sessions', 'results', 'adStats', 'messages', 'reviews', 'stats', 'activity', 'guests', 'plays'];
 let timer = null;
 function save(part) {
   if (REMOTE) { if (part) dirty.add(part); else PARTS.forEach(x => dirty.add(x)); scheduleRemote(); }
@@ -315,7 +315,9 @@ function recordGame({ level, intensity, lang, mode, players, rated = true, fullR
     const opp = players.find(o => o.id !== x.id);
     c.games++; c.points += Math.max(0, x.score); c.best = Math.max(c.best, x.score); c.words += x.words || 0;
     c.lastPlayed = Date.now();
-    // games per day (UTC), for the performance report; kept ~13 months
+    // every finished game, one line each (who, when, word length, points, solo/2-player, app or web), for the performance report
+    logPlay(x.id, level, x.score, mode, x.plat);
+    // games per day (UTC), the first record the performance report had; kept ~13 months
     const dk = new Date().toISOString().slice(0, 10);
     c.days = c.days || {}; c.days[dk] = (c.days[dk] || 0) + 1;
     const dks = Object.keys(c.days).sort();
@@ -348,6 +350,27 @@ function recordGame({ level, intensity, lang, mode, players, rated = true, fullR
   save('players'); save('stats');
   return out;
 }
+// The play log: one short line per finished game. Kept 400 days, at most 150000 lines.
+const PLAY_MAX = 150000, PLAY_DAYS = 400;
+function logPlay(id, level, score, mode, plat) {
+  const p = db.players[id]; if (!p) return;
+  const st = (db.stats = db.stats || {}); if (!st.playsSince) st.playsSince = Date.now();
+  db.plays = db.plays || [];
+  db.plays.push({ t: Date.now(), c: p.code, lv: level, sc: Math.max(0, score | 0), m: mode === 'duo' ? 'duo' : 'solo', p: plat === 'app' ? 'app' : 'web' });
+  if (db.plays.length > PLAY_MAX || db.plays[0].t < Date.now() - PLAY_DAYS * 86400_000) {
+    const cut = Date.now() - PLAY_DAYS * 86400_000;
+    db.plays = db.plays.filter(x => x.t >= cut).slice(-PLAY_MAX);
+  }
+  save('plays');
+}
+const tzFormats = new Map();
+function dayIn(tz, ms) {   // 'YYYY-MM-DD' of a moment in a time zone
+  let f = tzFormats.get(tz);
+  if (!f) { f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }); tzFormats.set(tz, f); }
+  return f.format(ms);
+}
+const REPORT_TZ = 'America/Los_Angeles';
+function okTz(tz) { try { new Intl.DateTimeFormat('en-CA', { timeZone: tz }); return tz; } catch (_) { return REPORT_TZ; } }
 function recordView(id) {
   const p = db.players[id]; if (!p) return null;
   const c = careerOf(id), nr = nextRank(c.points);
@@ -355,16 +378,37 @@ function recordView(id) {
     wins: c.wins, losses: c.losses, draws: c.draws, rating: c.rating, rank: rankFor(c.points),
     nextRank: nr ? { name: nr[1], at: nr[0] } : null, average: c.games ? Math.round(c.points / c.games * 10) / 10 : 0, lastPlayed: c.lastPlayed };
 }
-// Games per player per day (UTC) between two dates (YYYY-MM-DD, inclusive): { code: { name, days: { date: games } } }.
-// Counts start the day this was switched on; earlier games were only added up, not dated.
-function playReport(from, to) {
+// Games per player per day between two dates (YYYY-MM-DD, inclusive), the days cut in time zone tz (default Los Angeles, like
+// Weekly Champions): { code: { name, days: { date: games }, daily: { date: { g, p, t } }, plays: [{ t, lv, sc, m, p }] } }.
+// From the day after the play log started, every day comes from the log (each game with its word length, points and app/web).
+// Before that: the Weekly Champions day totals (Los Angeles days, rated games) when there are any, else the older UTC day counts.
+function playReport(from, to, tz = REPORT_TZ) {
+  tz = okTz(tz);
+  const since = (db.stats || {}).playsSince || 0;
+  const firstFull = since ? new Date(Date.parse(dayIn(tz, since) + 'T00:00:00Z') + 86400_000).toISOString().slice(0, 10) : '9999-12-31';
+  const byCode = {};
+  for (const p of Object.values(db.players)) byCode[p.code] = p;
   const out = {};
+  const slot = code => (out[code] = out[code] || { name: (byCode[code] || {}).name || '', days: {}, daily: {}, plays: [] });
   for (const p of Object.values(db.players)) {
-    const days = {};
-    for (const [d, n] of Object.entries(p.career?.days || {})) if (d >= from && d <= to) days[d] = n;
-    if (Object.keys(days).length) out[p.code] = { name: p.name || '', days };
+    const c = p.career || {};
+    for (const [d, n] of Object.entries(c.days || {})) {   // the old UTC counts
+      if (d >= from && d <= to && d < firstFull && !(c.daily && c.daily[d])) slot(p.code).days[d] = n;
+    }
+    for (const [d, x] of Object.entries(c.daily || {})) {   // Weekly Champions day totals (Los Angeles days)
+      if (d >= from && d <= to && d < firstFull && tz === REPORT_TZ) { const s = slot(p.code); s.days[d] = x.g; s.daily[d] = { g: x.g, p: x.p, t: x.t || 0 }; }
+    }
   }
-  return out;
+  for (const x of db.plays || []) {
+    const d = dayIn(tz, x.t);
+    if (d < firstFull || d < from || d > to) continue;
+    const s = slot(x.c);
+    s.days[d] = (s.days[d] || 0) + 1;
+    const dd = (s.daily[d] = s.daily[d] || { g: 0, p: 0, t: 0 }); dd.g++; dd.p += x.sc; dd.t = Math.max(dd.t, x.t);
+    s.plays.push({ t: x.t, lv: x.lv, sc: x.sc, m: x.m, p: x.p, d });
+  }
+  for (const [code, s] of Object.entries(out)) if (!Object.keys(s.days).length) delete out[code]; else s.name = s.name || (byCode[code] || {}).name || '';
+  return { tz, logFrom: since ? firstFull : '', players: out, today: dayIn(tz, Date.now()) };
 }
 // Best-rated players who have played at least 3 rated games.
 function ratingBoard(limit = 10) {
@@ -530,7 +574,7 @@ module.exports = {
   weeklyRows, todayGames, getStats, saveStats, addCredits, getCredits, creditList,
   recordGame, recordView, ratingBoard, allPlayers, deletePlayer, RANKS,
   startVisit, touchVisit, endVisit, visitGame, activityList, setName, noteSignIn,
-  countGames, gameStats, playReport,
+  countGames, gameStats, playReport, _testPlaysSince: ms => { (db.stats = db.stats || {}).playsSince = ms; },
   addMessage, listMessages, deleteMessage, setReview, getReview, allReviews, setReviewStatus,
   ready, flushRemote, remote: !!REMOTE,
   countAd, adStats, isAvailable, setAvailable,
