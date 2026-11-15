@@ -974,6 +974,7 @@ dialog.reader[open] { display: flex; }
 .radiobar .rb-dot { width: 8px; height: 8px; border-radius: 50%; background: #8be04e; animation: rbpulse 1.6s infinite; flex: none; }
 @keyframes rbpulse { 50% { opacity: .35; } }
 .radiobar button { background: rgba(255,255,255,.14); color: #fff; border: 0; border-radius: 99px; padding: 0 10px; height: 22px; line-height: 22px; font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; flex: none; }
+.radiobar .rb-pp { white-space: nowrap; }
 .radiobar .rb-x { background: none; font-size: 20px; padding: 0 4px; }
 .radiobar .rb-vol { width: 80px; accent-color: #8be04e; }
 .radiobar .rb-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
