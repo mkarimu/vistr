@@ -7,25 +7,53 @@ const fs = require('fs');
 const path = require('path');
 
 const FILE = process.env.VISTR_DB || path.join(__dirname, 'data', 'db.json');
+// The play-by-play log can grow to tens of thousands of rows, so it lives in its own file
+// and is saved on its own slower, non-blocking schedule - not re-written with every other change,
+// which would otherwise make every save pause the whole server for longer as the log grows.
+const PLAYS_FILE = process.env.VISTR_PLAYS_DB || path.join(path.dirname(FILE), 'plays.json');
 
 let db = { players: {}, sessions: {}, results: [], adStats: {}, messages: [], reviews: {}, stats: {}, activity: [], guests: {}, plays: [] };
 try {
   db = { ...db, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) };
 } catch (_) { /* first run */ }
+try {
+  db.plays = JSON.parse(fs.readFileSync(PLAYS_FILE, 'utf8'));
+} catch (_) { /* first run, or an older save that still has plays in db.json: keep what load above found */ }
 
 const PARTS = ['players', 'sessions', 'results', 'adStats', 'messages', 'reviews', 'stats', 'activity', 'guests', 'plays'];
-let timer = null;
+let timer = null, playsTimer = null, playsWriting = false, playsAgain = false;
 function save(part) {
   if (REMOTE) { if (part) dirty.add(part); else PARTS.forEach(x => dirty.add(x)); scheduleRemote(); }
+  if (part === 'plays') { schedulePlaysSave(); return; }
   clearTimeout(timer);
   timer = setTimeout(() => {
     try {
       fs.mkdirSync(path.dirname(FILE), { recursive: true });
       const tmp = FILE + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(db));
+      fs.writeFileSync(tmp, JSON.stringify({ ...db, plays: undefined }));
       fs.renameSync(tmp, FILE);
     } catch (e) { if (!REMOTE) console.error('Could not save', FILE, e.message); }
   }, 200);
+}
+function schedulePlaysSave() {
+  clearTimeout(playsTimer);
+  playsTimer = setTimeout(writePlays, 2000);
+}
+function writePlays() {
+  if (playsWriting) { playsAgain = true; return; }
+  playsWriting = true;
+  const text = JSON.stringify(db.plays);
+  fs.mkdir(path.dirname(PLAYS_FILE), { recursive: true }, () => {
+    const tmp = PLAYS_FILE + '.tmp';
+    fs.writeFile(tmp, text, (e) => {
+      if (e) { playsWriting = false; console.error('Could not save', PLAYS_FILE, e.message); return; }
+      fs.rename(tmp, PLAYS_FILE, (e2) => {
+        playsWriting = false;
+        if (e2) { console.error('Could not save', PLAYS_FILE, e2.message); }
+        if (playsAgain) { playsAgain = false; schedulePlaysSave(); }
+      });
+    });
+  });
 }
 
 // ── Optional Upstash Redis copy (plain HTTPS, no extra packages) ──
