@@ -756,10 +756,15 @@ dialog.reader[open] { display: flex; }
 /* Language picker at the top of the menu */
 .menu-lang { padding: 10px 2px 2px; }
 .menu-lang-label { margin: 0 0 8px; color: var(--mute); font-weight: 600; font-size: 0.95rem; }
-.lang-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.lang-chips {
+  display: flex; flex-direction: column; gap: 4px; max-height: 46vh; overflow-y: auto; overscroll-behavior: contain;
+  padding-right: 2px; border-radius: 12px;
+  scrollbar-width: thin;
+}
 .lang-chips button {
-  font: inherit; font-weight: 600; font-size: 0.95rem; color: var(--cream); cursor: pointer;
-  padding: 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); border: 2px solid rgba(255, 255, 255, 0.18);
+  font: inherit; font-weight: 600; font-size: 0.95rem; color: var(--cream); cursor: pointer; text-align: left;
+  padding: 8px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.08); border: 2px solid rgba(255, 255, 255, 0.18);
+  display: flex; align-items: center; gap: 6px;
 }
 .lang-chips button[aria-checked="true"] { background: var(--lime); border-color: var(--lime); color: var(--ink); }
 .lang-chips.locked button:not([aria-checked="true"]) { opacity: 0.45; }

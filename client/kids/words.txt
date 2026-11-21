@@ -42,9 +42,11 @@ bin
 bit
 bob
 bog
+bot
 bow
 box
 boy
+bro
 bud
 bug
 bun
@@ -90,6 +92,8 @@ dub
 dud
 due
 dug
+duh
+duo
 dye
 ear
 eat
@@ -102,6 +106,7 @@ elk
 elm
 emu
 end
+eon
 era
 eve
 ewe
@@ -138,6 +143,7 @@ gel
 gem
 get
 gig
+gnu
 god
 got
 gum
@@ -166,9 +172,11 @@ how
 hub
 hue
 hug
+huh
 hum
 hut
 ice
+ick
 icy
 ill
 imp
@@ -194,6 +202,7 @@ key
 kid
 kin
 kit
+koi
 lab
 lad
 lap
@@ -240,6 +249,7 @@ net
 new
 nib
 nip
+nix
 nod
 nor
 not
@@ -256,6 +266,7 @@ oft
 oil
 old
 one
+ooh
 orb
 ore
 our
@@ -289,6 +300,7 @@ pot
 pro
 pry
 psi
+pub
 pug
 pun
 pup
@@ -335,6 +347,7 @@ she
 shy
 sip
 sir
+sis
 sit
 six
 ski
@@ -381,9 +394,11 @@ tub
 tug
 tux
 two
+ump
 urn
 use
 van
+vat
 vet
 vex
 via
@@ -412,6 +427,7 @@ wow
 yak
 yam
 yap
+yay
 yen
 yep
 yes

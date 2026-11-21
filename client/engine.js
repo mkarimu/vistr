@@ -28,6 +28,7 @@
     fr: { name: 'Français', alphabet: A_Z, hot: { k: 3, w: 3, j: 3, q: 3, x: 3, y: 3, z: 3, f: 1, h: 1, v: 1 } },
     pt: { name: 'Português', alphabet: A_Z, hot: { k: 3, w: 3, y: 3, q: 3, x: 3, z: 3, j: 3, f: 1, h: 1, v: 1 } },
     sw: { name: 'Kiswahili', alphabet: A_Z, hot: { c: 3, j: 3, v: 3, y: 3, q: 3, x: 3, f: 1, p: 1, z: 1 } },
+    tl: { name: 'Filipino', alphabet: A_Z, hot: { q: 3, x: 3, v: 3, j: 3, z: 3, c: 1, f: 1 } },
   };
   const LANG_CODES = Object.keys(LANGS);
   const langOf = l => (LANGS[l] ? l : 'en');
@@ -69,6 +70,13 @@
       skipEnd: 'Huo ulikuwa mruko wa {n}, kwa hiyo raundi imekwisha.', skipNew: 'Neno jipya: {W}. ', skipLast: 'Mruko wako ujao utamaliza raundi.',
       skipLeft1: 'Umebakiwa na mruko 1 wa bure.', skipLeftN: 'Umebakiwa na miruko {n} ya bure.',
       pWord: 'Neno', pHot: 'Herufi adimu {L}', pStreak: '{n} mfululizo', pJackpot: 'Neno la jackpot', pMiss: 'Si neno' },
+    tl: { illegal: 'Palitan ang eksaktong isang titik.', repeat: '{W} ay nagamit na sa round na ito.', valid: '{W} +{n}', jackpot: 'JACKPOT! {W} +{n}',
+      fresh: ". Walang natitirang galaw, kaya heto ang bagong salita: {W}", missPen: '{W} ay hindi salita. −{n}', missFree: '{W} ay hindi salita. Walang puntos na nawala.',
+      hintAdv: 'Walang hint sa Advanced.', hintNone: 'Walang natitirang hint sa round na ito.', hintNoMoves: 'Walang galaw mula sa salitang ito. Subukan ang Susunod na salita.',
+      hint1: 'Subukang baguhin ang letra {i}: 1 tunay na salita ang nakatago roon.', hintN: 'Subukang baguhin ang letra {i}: {n} tunay na salita ang nakatago roon.',
+      skipEnd: 'Iyon ang paglaktaw bilang {n}, kaya tapos na ang round.', skipNew: 'Bagong salita: {W}. ', skipLast: 'Ang susunod mong laktaw ang magtatapos sa round.',
+      skipLeft1: '1 libreng laktaw na natitira.', skipLeftN: '{n} libreng laktaw na natitira.',
+      pWord: 'Salita', pHot: 'Mainit na letra {L}', pStreak: '{n} sunod-sunod', pJackpot: 'Salitang jackpot', pMiss: 'Hindi salita' },
   };
   function msg(lang, key, v = {}) {
     const t = (MSG[langOf(lang)] || MSG.en)[key] ?? MSG.en[key];

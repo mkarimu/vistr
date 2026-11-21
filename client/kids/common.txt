@@ -32,6 +32,7 @@ bit
 bow
 box
 boy
+bro
 bud
 bug
 bun
@@ -63,6 +64,7 @@ dot
 dry
 due
 dug
+duo
 ear
 eat
 ebb
@@ -125,6 +127,7 @@ how
 hub
 hue
 hug
+huh
 hum
 hut
 ice
@@ -252,6 +255,7 @@ sew
 she
 shy
 sip
+sis
 sit
 six
 sky
@@ -312,6 +316,7 @@ wow
 yak
 yam
 yap
+yay
 yen
 yes
 yet
