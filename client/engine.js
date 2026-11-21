@@ -29,6 +29,11 @@
     pt: { name: 'Português', alphabet: A_Z, hot: { k: 3, w: 3, y: 3, q: 3, x: 3, z: 3, j: 3, f: 1, h: 1, v: 1 } },
     sw: { name: 'Kiswahili', alphabet: A_Z, hot: { c: 3, j: 3, v: 3, y: 3, q: 3, x: 3, f: 1, p: 1, z: 1 } },
     tl: { name: 'Filipino', alphabet: A_Z, hot: { q: 3, x: 3, v: 3, j: 3, z: 3, c: 1, f: 1 } },
+    ar: {
+      name: 'العربية', rtl: true,
+      alphabet: 'ابتثجحخدذرزسشصضطظعغفقكلمنهويةىءآأؤإئ',
+      hot: { 'آ': 3, 'إ': 3, 'ء': 3, 'ى': 3, 'ظ': 3, 'ؤ': 1, 'ة': 1, 'ئ': 1 },
+    },
   };
   const LANG_CODES = Object.keys(LANGS);
   const langOf = l => (LANGS[l] ? l : 'en');
@@ -77,6 +82,13 @@
       skipEnd: 'Iyon ang paglaktaw bilang {n}, kaya tapos na ang round.', skipNew: 'Bagong salita: {W}. ', skipLast: 'Ang susunod mong laktaw ang magtatapos sa round.',
       skipLeft1: '1 libreng laktaw na natitira.', skipLeftN: '{n} libreng laktaw na natitira.',
       pWord: 'Salita', pHot: 'Mainit na letra {L}', pStreak: '{n} sunod-sunod', pJackpot: 'Salitang jackpot', pMiss: 'Hindi salita' },
+    ar: { illegal: 'غيّر حرفًا واحدًا فقط.', repeat: '{W} تم استخدامها في هذه الجولة.', valid: '{W} +{n}', jackpot: 'الجائزة الكبرى! {W} +{n}',
+      fresh: '. لا توجد حركات متاحة، إليك كلمة جديدة: {W}', missPen: '{W} ليست كلمة. −{n}', missFree: '{W} ليست كلمة. لم تخسر نقاطًا.',
+      hintAdv: 'لا تلميحات في المستوى المتقدم.', hintNone: 'لا تلميحات متبقية في هذه الجولة.', hintNoMoves: 'لا حركات من هذه الكلمة. جرّب كلمة أخرى.',
+      hint1: 'جرّب الحرف {i}: كلمة واحدة حقيقية مخفية هناك.', hintN: 'جرّب الحرف {i}: {n} كلمات حقيقية مخفية هناك.',
+      skipEnd: 'كانت تلك المحاولة رقم {n}، فانتهت الجولة.', skipNew: 'كلمة جديدة: {W}. ', skipLast: 'المحاولة التالية ستنهي الجولة.',
+      skipLeft1: 'تبقّت محاولة مجانية واحدة.', skipLeftN: 'تبقّت {n} محاولات مجانية.',
+      pWord: 'كلمة', pHot: 'حرف نادر {L}', pStreak: '{n} متتالية', pJackpot: 'كلمة الجائزة الكبرى', pMiss: 'ليست كلمة' },
   };
   function msg(lang, key, v = {}) {
     const t = (MSG[langOf(lang)] || MSG.en)[key] ?? MSG.en[key];

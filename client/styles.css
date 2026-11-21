@@ -64,7 +64,7 @@ h2 { font-size: 1.1rem; font-weight: 600; color: var(--mute); margin-top: 4px; }
 .headline { font-size: clamp(1.7rem, 7vw, 2.3rem); font-weight: 700; line-height: 1.1; color: var(--cream); }
 
 /* Wordmark: each letter a different candy, slightly tilted like stickers */
-.wordmark { font-size: clamp(3.6rem, 16vw, 5.4rem); font-weight: 700; line-height: 0.95; letter-spacing: -0.02em; display: inline-flex; }
+.wordmark { font-size: clamp(3.6rem, 16vw, 5.4rem); font-weight: 700; line-height: 0.95; letter-spacing: -0.02em; display: inline-flex; direction: ltr; }
 .wordmark span { display: inline-block; text-shadow: 0 4px 0 rgba(0, 0, 0, 0.25); }
 .wordmark span:nth-child(5n+1) { color: var(--tangerine); transform: rotate(-6deg); }
 .wordmark span:nth-child(5n+2) { color: var(--bubblegum); transform: rotate(4deg) translateY(-3px); }

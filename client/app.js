@@ -6,6 +6,10 @@
   const A_Z = 'abcdefghijklmnopqrstuvwxyz';
   // The letters on the drums: the current game's language (Spanish adds Ñ).
   const abc = () => S.match?.rules?.alphabet || E.LANGS[S.match?.lang || S.lang]?.alphabet || A_Z;
+  // Some menu languages (Chinese, Hindi) translate the app's text but have no word list of
+  // their own yet: gameplay quietly falls back to English for them. `glang` gives the real
+  // language to play in; `S.lang` (and the picker) stays whatever the person chose to read.
+  const glang = (l = S.lang) => E.LANGS[l] ? l : 'en';
   const isNative = !!window.Capacitor?.isNativePlatform?.();
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -31,9 +35,10 @@
     player: null,
     level: [4, 5, 6, 7].includes(Number(saved('vistr.level'))) ? Number(saved('vistr.level')) : 5,
     intensity: ['learner', 'intermediate', 'advanced'].includes(saved('vistr.intensity')) ? saved('vistr.intensity') : 'learner',
-    // Language of the whole game: the words played and the app's text.
-    lang: E.LANGS[saved('vistr.lang')] ? saved('vistr.lang')
-      : (navigator.languages || [navigator.language || 'en']).map(l => String(l).slice(0, 2).toLowerCase()).find(l => E.LANGS[l]) || 'en',
+    // Language of the whole game: the words played (or, for a menu-only language, just the app's text).
+    lang: (E.LANGS[saved('vistr.lang')] || (window.VISTR_I18N || {})[saved('vistr.lang')]) ? saved('vistr.lang')
+      : (navigator.languages || [navigator.language || 'en']).map(l => String(l).slice(0, 2).toLowerCase())
+          .find(l => E.LANGS[l] || (window.VISTR_I18N || {})[l]) || 'en',
     screen: null,
     match: null,
     events: null,
@@ -116,6 +121,7 @@
     // Word lists per language: English in words/, others in words/<lang>/.
     D(lang) { return (this.data[lang] = this.data[lang] || { words: {}, starts: {}, common: {}, easy: {}, pools: {}, blocked: null }); },
     async load(L, lang = S.lang) {
+      lang = glang(lang);
       const d = this.D(lang);
       if (d.words[L]) return;
       const base = lang === 'en' ? 'words/' : `words/${lang}/`;
@@ -146,6 +152,7 @@
       return E.applySkip(m.state, () => this.pick(m.level, m.intensity, m.lang));
     },
     newMatch(L, intensity, lang = S.lang) {
+      lang = glang(lang);
       return { local: true, id: 'local', level: L, intensity, lang, mode: 'single', status: 'pending', rules: E.publicRules(undefined, intensity, lang),
         players: [{ me: true, playerCode: 'You', ready: false, online: true, score: 0 }] };
     },
@@ -185,7 +192,7 @@
 
   async function startSolo(level) {
     if (S.mode === 'live') {
-      const r = await api('POST', '/api/match/single', { level, intensity: S.intensity, lang: S.lang });
+      const r = await api('POST', '/api/match/single', { level, intensity: S.intensity, lang: glang() });
       S.match = r.match;
     } else {
       await Local.load(level, S.lang);
@@ -309,7 +316,7 @@
   async function checkIn() {
     if (S.mode !== 'live' || !S.token) return;
     try {
-      const r = await api('GET', `/api/players?lang=${S.lang}`);
+      const r = await api('GET', `/api/players?lang=${glang()}`);
       S.players = r.players; S.lobby = r.lobby; S.playersSkew = r.serverNow - Date.now();
       if (r.incoming && !$('#request-dialog').open) showRequest(r.incoming);
       if (S.outgoing && !r.outgoing) S.outgoing = null;
@@ -333,7 +340,7 @@
   function connectEvents() {
     S.events?.close();
     watch();
-    const es = new EventSource(`${S.server.replace(/\/$/, '')}/api/events?token=${encodeURIComponent(S.token)}&lang=${S.lang}${isNative ? '&app=android' : ''}`);
+    const es = new EventSource(`${S.server.replace(/\/$/, '')}/api/events?token=${encodeURIComponent(S.token)}&lang=${glang()}${isNative ? '&app=android' : ''}`);
     S.events = es;
     const on = (type, fn) => es.addEventListener(type, e => fn(JSON.parse(e.data)));
     on('players', d => {
@@ -812,7 +819,7 @@
     if (!live) return;
     Record.show();
     S.clockTimer = setInterval(renderClocks, 1000);
-    api('GET', `/api/players?lang=${S.lang}`).then(r => {
+    api('GET', `/api/players?lang=${glang()}`).then(r => {
       S.players = r.players; S.lobby = r.lobby; S.playersSkew = r.serverNow - Date.now();
       S.outgoing = r.outgoing;
       if (r.incoming && !$('#request-dialog').open) showRequest(r.incoming);
@@ -834,7 +841,7 @@
     const others = (S.players || []).filter(p => p.playerCode !== S.player?.code);
     ul.innerHTML = others.length ? others.map(p => `
       <li data-player="${esc(p.playerCode)}">
-        <span class="who"><span class="pid">${esc(who(p.playerCode, p.name))}${p.name ? ` <small class="lang-tag">#${esc(p.playerCode)}</small>` : ''}${p.lang && p.lang !== S.lang ? ` <small class="lang-tag">${esc(E.LANGS[p.lang]?.name || p.lang)}</small>` : ''}</span>
+        <span class="who"><span class="pid">${esc(who(p.playerCode, p.name))}${p.name ? ` <small class="lang-tag">#${esc(p.playerCode)}</small>` : ''}${p.lang && p.lang !== glang() ? ` <small class="lang-tag">${esc(E.LANGS[p.lang]?.name || p.lang)}</small>` : ''}</span>
           <span class="status ${p.status === 'free' && !p.requested ? 'on' : ''}" ${p.status === 'solo' ? `data-ends="${p.endsAt}" data-lvl="${p.level}" data-int="${esc(ilabel(p.intensity))}"` : ''}>${statusText(p)}</span></span>
         ${p.requested || (S.outgoing && S.outgoing.to === p.playerCode) ? '' :
           `<button class="btn" type="button" data-action="request" data-code="${esc(p.playerCode)}">${t('Request')}</button>`}
@@ -1046,7 +1053,7 @@
   }
   function sendRequest(code) {
     guard(async () => {
-      const r = await api('POST', '/api/request', { playerCode: code, level: S.level, intensity: S.intensity, lang: S.lang });
+      const r = await api('POST', '/api/request', { playerCode: code, level: S.level, intensity: S.intensity, lang: glang() });
       S.outgoing = { to: r.to, level: r.level, intensity: r.intensity, lang: r.lang };
       const f = $('[data-form=request]'); if (f) f.reset();
       renderPlayers();
@@ -1112,12 +1119,12 @@
   async function loadBoards(el, level, mineHighlight) {
     el.innerHTML = '';
     if (S.mode !== 'live') {
-      el.innerHTML = boardHtml(t('Your top 10, {n} letters, {i}', { n: level, i: ilabel(S.intensity) }), Local.topTen(level, S.intensity, S.lang).map(x => ({ name: fmtDate(x.finishedAt), score: x.score })),
+      el.innerHTML = boardHtml(t('Your top 10, {n} letters, {i}', { n: level, i: ilabel(S.intensity) }), Local.topTen(level, S.intensity, glang()).map(x => ({ name: fmtDate(x.finishedAt), score: x.score })),
         t('Your best games on this device will show here.'));
       return;
     }
     try {
-      const r = await api('GET', `/api/scores?level=${level}&intensity=${S.intensity}&lang=${S.lang}`);
+      const r = await api('GET', `/api/scores?level=${level}&intensity=${S.intensity}&lang=${glang()}`);
       el.innerHTML = boardHtml(t('Your top 10, {n} letters, {i}', { n: level, i: ilabel(S.intensity) }), r.topTen.map(x => ({ name: fmtDate(x.finishedAt), score: x.score, mine: x.finishedAt === mineHighlight })), t('Your best games will show here.'))
         + boardHtml(t('All-time, {n} letters, {i}', { n: level, i: ilabel(S.intensity) }), r.board.map(b => ({ name: who(b.playerCode, b.name), score: b.score, mine: b.playerCode === S.player?.code })), t('No games yet at this level.'));
     } catch (e) { el.innerHTML = `<p class="error">${esc(e.message)}</p>`; }
@@ -1919,8 +1926,11 @@
     if (note) { note.textContent = t('Finish or end this round first.'); note.hidden = !langLocked(); }
     $('.lang-chips')?.classList.toggle('locked', langLocked());
   }
+  // Display names for menu-only languages (no E.LANGS entry, since there's no word list to match).
+  const UI_ONLY_LANG_NAMES = { zh: '中文', hi: 'हिन्दी' };
+  const langDisplayName = l => E.LANGS[l]?.name || UI_ONLY_LANG_NAMES[l] || l;
   async function setLang(l) {
-    if (!E.LANGS[l] || l === S.lang) return;
+    if (!(E.LANGS[l] || I18N[l]) || l === S.lang) return;
     if (langLocked()) { renderLangPicker(); replay($('[data-lang-note]'), 'show'); return; }   // shown in the menu itself
     if (S.screen === 'ready') {                       // solo, not started yet: cancel it, then switch
       try { if (!S.match?.local) await api('POST', '/api/match/quit'); } catch (_) {}
@@ -1928,6 +1938,7 @@
     }
     S.lang = l; saved('vistr.lang', l);
     document.documentElement.lang = l;
+    document.documentElement.dir = E.LANGS[l]?.rtl ? 'rtl' : 'ltr';
     translateDom(document.body);                     // top bar, menu, dialogs
     renderLangPicker();
     setNet(S.mode === 'live' ? 'online' : 'offline');
@@ -1935,7 +1946,9 @@
     if (S.screen === 'home' || S.screen === 'results') showHome();
     else if (S.screen) translateDom(app);
     if (S.mode === 'live' && S.token) { connectEvents(); checkIn(); }   // others see your new language
-    toast(t('Language: {l}. Words are now in {l} too.', { l: E.LANGS[l].name }));
+    toast(E.LANGS[l]
+      ? t('Language: {l}. Words are now in {l} too.', { l: langDisplayName(l) })
+      : t('Language: {l}. The words to guess stay in English for now.', { l: langDisplayName(l) }));
   }
   $('#menu').addEventListener('click', e => { const b = e.target.closest('[data-lang]'); if (b) setLang(b.dataset.lang); });
 
@@ -1984,6 +1997,7 @@
       document.querySelectorAll('a[href="missing/"]').forEach(a => a.remove());
     }
     document.documentElement.lang = S.lang;
+    document.documentElement.dir = E.LANGS[S.lang]?.rtl ? 'rtl' : 'ltr';
     translateDom(document.body);
     renderLangPicker();
     NativeAds.init().then(on => { if (on) Ads.showBanner(); });
